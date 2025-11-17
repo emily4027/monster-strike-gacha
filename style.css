@@ -72,6 +72,16 @@ h2 {
     cursor: not-allowed;
 }
 
+/* (新) 載入按鈕的輔助樣式 */
+.btn-subtle {
+    border-color: #ced4da; /* 匹配 .form-select 的邊框 */
+    color: #0d6efd;
+    background-color: #f8f9fa;
+}
+.btn-subtle:hover {
+    background-color: #e9ecef;
+}
+
 .btn-danger {
     --bs-btn-bg: #dc3545;
     --bs-btn-border-color: #dc3545;

@@ -24,6 +24,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const pullsInput = document.getElementById('pulls');
     const notesInput = document.getElementById('notes');
 
+    // (新) 手動載入按鈕
+    const loadRecordBtn = document.getElementById('load-record-btn');
+
     const submitBtnText = document.getElementById('submit-btn-text');
     const cancelEditBtn = document.getElementById('cancel-edit-btn');
     
@@ -131,7 +134,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 r.date === date && r.event === event && r.account === account
             );
             if (existingRecord) {
-                showToast('錯誤：該筆紀錄已存在。', 'error');
+                // (新) 提示：如果紀錄已存在，詢問是否要載入
+                showToast('紀錄已存在。請點擊"載入"按鈕進行編輯。', 'info');
+                checkIfRecordExists(); // 確保"載入"按鈕可見
                 return;
             }
 
@@ -536,13 +541,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 eventSelect.value = recordToEdit.event;
                 accountSelect.value = recordToEdit.account;
 
-                // 3. (新) 手動觸發 checkAndLoadRecord
-                //    它會自動載入 pulls, notes, tag 並切換模式
-                checkAndLoadRecord();
-
-                // 4. 捲動到最上方
+                // 3. (新) 手動觸發 checkIfRecordExists (這會顯示 "載入" 按鈕)
+                checkIfRecordExists();
+                
+                // 4. (新) 提示使用者點擊 "載入" 按鈕
                 window.scrollTo({ top: 0, behavior: 'smooth' });
-                showToast('請在上方表單編輯', 'info');
+                showToast('請點擊"載入"按鈕以編輯', 'info');
             }
         }
     });
@@ -584,7 +588,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // (新) 重置時也檢查一次
-        checkAndLoadRecord();
+        checkIfRecordExists();
     }
 
     /**
@@ -596,7 +600,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (type === 'error') {
             bgColor = '#dc3545';
         } else if (type === 'info') {
-            bgColor = '#0d6efd';
+            bgColor = '#0d6efd'; 
         }
         toastMessage.style.backgroundColor = bgColor;
         toastMessage.classList.add('show');
@@ -726,12 +730,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
-    // --- (新) 核心邏輯：檢查紀錄是否存在並自動載入 ---
-    function checkAndLoadRecord() {
+    // --- (新) 核心邏輯：檢查紀錄是否存在並"顯示按鈕" ---
+    function checkIfRecordExists() {
         // 只有在非 "新增" 模式時才檢查
         if (isAddingNewEvent || isAddingNewAccount) {
-            // 如果正在輸入新帳號/活動，強制切換到 "儲存" 模式
-            setFormMode('new');
+            loadRecordBtn.style.display = 'none'; // 隱藏載入按鈕
+            setFormMode('new'); // 強制新增
             return;
         }
 
@@ -741,7 +745,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 如果 "帳號" 或 "活動" 是 "--new--"
         if (account === '--new--' || event === '--new--') {
-            setFormMode('new');
+            loadRecordBtn.style.display = 'none'; // 隱藏載入按鈕
+            setFormMode('new'); // 強制新增
             return;
         }
 
@@ -751,16 +756,18 @@ document.addEventListener('DOMContentLoaded', () => {
         );
 
         if (existingRecord) {
-            // --- 找到了：切換到編輯模式 ---
-            pullsInput.value = existingRecord.pulls;
-            notesInput.value = existingRecord.notes;
-            tagSelect.value = existingRecord.tag || 'none';
+            // --- 找到了：顯示"載入"按鈕 ---
+            loadRecordBtn.style.display = 'block';
+            
+            // (新) 如果 "不是" 處於編輯模式，就保持 "新增" 模式
+            // (避免使用者只是想查看，結果表單被鎖在 "更新" 模式)
+            if (!editMode) {
+                setFormMode('new');
+            }
 
-            editId = existingRecord.id;
-            setFormMode('edit');
         } else {
-            // --- 沒找到：切換到新增模式 ---
-            editId = null;
+            // --- 沒找到：隱藏"載N"按鈕並切換到新增模式 ---
+            loadRecordBtn.style.display = 'none';
             setFormMode('new');
         }
     }
@@ -796,15 +803,15 @@ document.addEventListener('DOMContentLoaded', () => {
     monthFilter.addEventListener('change', renderAll);
 
     // (新) 監聽表單主欄位的變化
-    dateInput.addEventListener('change', checkAndLoadRecord);
+    dateInput.addEventListener('change', checkIfRecordExists);
     
     // (新) 監聽 "活動" 下拉選單變化
     function handleEventSelectChange() {
         if (eventSelect.value === '--new--') {
             showEventInputUI();
-            setFormMode('new'); // GOTO新增模式
+            checkIfRecordExists(); // 確保按鈕隱藏
         } else {
-            checkAndLoadRecord(); // 檢查是否存在
+            checkIfRecordExists(); // 檢查是否存在
         }
     }
     eventSelect.addEventListener('change', handleEventSelectChange);
@@ -814,18 +821,18 @@ document.addEventListener('DOMContentLoaded', () => {
     cancelNewEvent.addEventListener('click', () => {
         showEventSelectUI();
         if (eventSelect.options.length > 0) {
-            eventSelect.value = eventSelect.options[0].value; // 選回 "-- 新增活動 --"
+            eventSelect.value = eventSelect.options[0].value; // 選回 "-- 新g"
         }
-        checkAndLoadRecord(); // 檢查
+        checkIfRecordExists(); // 檢查
     });
 
     // (新) 監聽 "帳號" 下拉選單變化
     function handleAccountSelectChange() {
         if (accountSelect.value === '--new--') {
             showAccountInputUI();
-            setFormMode('new'); // GOTO新增模式
+            checkIfRecordExists(); // 確保按鈕隱藏
         } else {
-            checkAndLoadRecord(); // 檢查是否存在
+            checkIfRecordExists(); // 檢查是否存在
         }
     }
     accountSelect.addEventListener('change', handleAccountSelectChange);
@@ -841,8 +848,35 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (accountSelect.options.length > 1) { // [0] 是 "新增"
             accountSelect.value = accountSelect.options[1].value;
         }
-        checkAndLoadRecord(); // 檢查
+        checkIfRecordExists(); // 檢查
     });
+
+    // (新) 監聽 "載入舊紀錄" 按鈕
+    loadRecordBtn.addEventListener('click', () => {
+        const date = dateInput.value;
+        const event = eventSelect.value;
+        const account = accountSelect.value;
+
+        const existingRecord = records.find(r =>
+            r.date === date && r.event === event && r.account === account
+        );
+
+        if (existingRecord) {
+            // --- 找到了：手動載入資料並切換到編輯模式 ---
+            pullsInput.value = existingRecord.pulls;
+            notesInput.value = existingRecord.notes;
+            tagSelect.value = existingRecord.tag || 'none';
+            editId = existingRecord.id;
+            
+            setFormMode('edit');
+            loadRecordBtn.style.display = 'none'; // 載入後隱藏
+            showToast('紀錄已載入，請開始編輯', 'success');
+        } else {
+            // 理論上不會發生，因為按鈕是隱藏的
+            showToast('找不到紀錄 (錯誤)', 'error');
+        }
+    });
+
 
     // 處理年份變更的函式
     function handleYearChange() {
@@ -852,5 +886,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     loadRecords();
     renderAll();
-    resetFormState(); // (新) 用 resetFormState 初始化，確保載入正確日期並觸發檢查
+    resetFormSthate(); // (新) 用 resetFormState 初始化，確保載入正確日期並觸發檢查
 });

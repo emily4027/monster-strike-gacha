@@ -263,9 +263,12 @@ function renderTable(filteredRecords, selectedAccount, selectedYear, selectedMon
             row.setAttribute('data-tag', record.tag);
         }
 
+        // (新) 在渲染表格時，也清理活動名稱
+        const cleanEventName = getCleanEventName(record.event, record.date);
+
         row.innerHTML = `
             <td>${record.date}</td>
-            <td>${record.event}</td>
+            <td>${cleanEventName}</td> <!-- (新) 使用清理過的名稱 -->
             <td>${record.account}</td>
             <td>${record.pulls}</td>
             <td>${record.notes}</td>
@@ -326,30 +329,15 @@ function calculateStats(filteredRecords, selectedAccount) {
         scrollableContent.innerHTML = `<p><i>尚無資料</i></p>`;
     } else {
         for (const [event, data] of sortedEvents) {
+            // (新) 同時獲取年份和月份
+            const year = data.firstDate.split('-')[0];
             const month = parseInt(data.firstDate.split('-')[1], 10);
 
-            // 處理活動名稱顯示
-            let displayEventName = event; 
-            const year = data.firstDate.substring(0, 4);
-            const monthInt = parseInt(data.firstDate.split('-')[1], 10); 
+            // (新) 使用輔助函式清理名稱
+            const displayEventName = getCleanEventName(event, data.firstDate); 
 
-            const pattern1 = `${year}-${monthInt}月`; 
-            const pattern2 = `${year}年${monthInt}月`;
-            const pattern3 = `${year}/${monthInt}月`; 
-            
-            if (displayEventName.startsWith(pattern1)) {
-                displayEventName = displayEventName.substring(pattern1.length).trim();
-            } else if (displayEventName.startsWith(pattern2)) {
-                displayEventName = displayEventName.substring(pattern2.length).trim();
-            } else if (displayEventName.startsWith(pattern3)) {
-                displayEventName = displayEventName.substring(pattern3.length).trim();
-            }
-
-            if (displayEventName === "") {
-                displayEventName = event; 
-            }
-
-            scrollableContent.innerHTML += `<p><span class="text-muted small me-2" style="display: inline-block; width: 30px;">${month}月</span> ${displayEventName}: <strong>${data.pulls.toLocaleString()}</strong> 抽</p>`;
+            // (新) 更新日期標籤格式為 "YYYY年 M月"，並增加寬度
+            scrollableContent.innerHTML += `<p><span class="text-muted small me-2" style="display: inline-block; width: 75px;">${year}年 ${month}月</span> ${displayEventName}: <strong>${data.pulls.toLocaleString()}</strong> 抽</p>`;
         }
     }
     eventStatsDiv.appendChild(scrollableContent);
@@ -375,6 +363,36 @@ function getSortedAccountNames() {
     others.sort((a, b) => a.localeCompare(b));
 
     return [...preferred, ...others];
+}
+
+/**
+ * (新) 輔助函式：清理活動名稱中的日期前綴
+ */
+function getCleanEventName(event, date) {
+    let displayEventName = event; 
+    const year = date.substring(0, 4);
+    const monthInt = parseInt(date.split('-')[1], 10); 
+
+    // 檢查 "2023-9月"
+    const pattern1 = `${year}-${monthInt}月`; 
+    // 檢查 "2023年9月"
+    const pattern2 = `${year}年${monthInt}月`;
+    // 檢查 "2023/9月"
+    const pattern3 = `${year}/${monthInt}月`; 
+    
+    if (displayEventName.startsWith(pattern1)) {
+        displayEventName = displayEventName.substring(pattern1.length).trim();
+    } else if (displayEventName.startsWith(pattern2)) {
+        displayEventName = displayEventName.substring(pattern2.length).trim();
+    } else if (displayEventName.startsWith(pattern3)) {
+        displayEventName = displayEventName.substring(pattern3.length).trim();
+    }
+
+    // 如果清理後變空字串 (例如活動名稱就叫 "2023-9月")，就退回原始名稱
+    if (displayEventName === "") {
+        displayEventName = event; 
+    }
+    return displayEventName;
 }
 
 /**

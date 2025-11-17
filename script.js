@@ -25,8 +25,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const pullsInput = document.getElementById('pulls');
     const notesInput = document.getElementById('notes');
 
-    // (移除) loadRecordBtn
-
     const submitBtnText = document.getElementById('submit-btn-text');
     const cancelEditBtn = document.getElementById('cancel-edit-btn');
     
@@ -134,7 +132,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     recordToUpdate.tag = tag;
                     recordToUpdate.pulls = pulls;
                     recordToUpdate.notes = notes;
-                    // (注意：編輯模式下不允許更改 event 和 account 名稱)
                     showToast('紀錄已更新！', 'success');
                 } else {
                     // (新) 如果在編輯模式下，但該帳號沒有紀錄，則轉為 "新增"
@@ -218,13 +215,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 這幾個永遠用全部資料
         const sortedAccounts = getSortedAccountNames();
-        updateEventFormSelect(); // (新) 參數移除
+        updateEventFormSelect(); 
         updateAccountFilter(sortedAccounts);
         
-        // (新) 只有在非編輯模式下才更新帳號表單
-        // (避免在編輯時，選單被重置)
         if (!editMode) {
-            updateAccountFormSelect(sortedAccounts); // (新) 參數移除
+            updateAccountFormSelect(sortedAccounts); 
         }
 
         updateYearFilter();
@@ -544,15 +539,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const recordToEdit = records.find(r => r.id === idToEdit);
 
             if (recordToEdit) {
-                // 1. 確保 UI 是下拉選單
-                showEventSelectUI();
+                // 1. 確保 UI 是下拉選單 (會被 enterEditMode 覆蓋)
+                // showEventSelectUI();
                 showAccountSelectUI();
 
                 // 2. 設定 "活動"
                 eventSelect.value = recordToEdit.event;
                 
                 // 3. (新) 手動觸發 "編輯" 按鈕邏輯
-                // 這會鎖定活動、設定 editEventName、並載入 "批次" 選項
                 enterEditMode(); 
 
                 // 4. 設定 "帳號" (在 "批次" 選項載入後)
@@ -590,8 +584,6 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBtnText.textContent = '儲存紀錄';
         cancelEditBtn.style.display = 'none';
 
-        // (新) 解鎖活動欄位 (移除 disabled)
-        eventSelect.disabled = false;
         // (新) 隱藏 "編輯" 按鈕
         editEventBtn.style.display = 'none';
 
@@ -669,7 +661,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function showEventInputUI() {
         eventSelect.style.display = 'none';
         eventInputGroup.style.display = 'block';
-        isAddingNewEvent = true;
+        isAddingNewEvent = true; // (修正) 這裡應該是 true
         eventInput.value = '';
         eventInput.focus();
     }
@@ -784,12 +776,15 @@ document.addEventListener('DOMContentLoaded', () => {
         cancelEditBtn.style.display = 'inline-block';
         editEventBtn.style.display = 'none'; // 隱藏自己
         
-        // (新) 顯示 "輸入框" 並填入原始名稱，取代 "鎖定下拉選單"
+        // (新) 顯示 "輸入框" 並填入原始名稱
         showEventInputUI();
         eventInput.value = eventName;
 
         // 2. 重建帳號選單 (加入 "批次" 選項)
         updateAccountFormSelect(getSortedAccountNames(), { isEditMode: true });
+
+        // (新) 依照使用者要求，預設選取 "全部帳號"
+        accountSelect.value = '--batch--';
 
         // 3. 預先載入 "批次" 模式的資料 (日期/標籤)
         loadRecordForEdit('--batch--');

@@ -594,6 +594,11 @@ document.addEventListener('DOMContentLoaded', () => {
         showEventSelectUI(); // (新) 確保顯示的是下拉選單
         if (eventSelect.options.length > 0) {
             eventSelect.value = eventSelect.options[0].value; // 選回 "-- 新增活動 --"
+            
+            // (新) 手動觸發 "活動" 選單的 change 事件
+            // 這是為了修復 "新增活動" 在重置後失效的 BUG
+            // 它會自動呼叫 showEventInputUI() 並隱藏 "編輯" 按鈕
+            handleEventSelectChange(); 
         }
 
         // 重置帳號欄位

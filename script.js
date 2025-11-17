@@ -14,6 +14,10 @@ const submitBtnText = document.getElementById('submit-btn-text');
 const cancelEditBtn = document.getElementById('cancel-edit-btn');
 
 const accountFilter = document.getElementById('account-filter');
+// (新) 日期篩選器
+const yearFilter = document.getElementById('year-filter');
+const monthFilter = document.getElementById('month-filter');
+
 const historyTableTitle = document.getElementById('history-table-title');
 
 // 資料管理按鈕
@@ -135,28 +139,74 @@ function loadRecords() {
  */
 function renderAll() {
     const selectedAccount = accountFilter.value;
+    // (新) 讀取日期篩選器的值
+    const selectedYear = yearFilter.value;
+    const selectedMonth = monthFilter.value;
+
     let filteredRecords = records;
+    
+    // 1. 篩選帳號
     if (selectedAccount !== 'all') {
-        filteredRecords = records.filter(record => record.account === selectedAccount);
+        filteredRecords = filteredRecords.filter(record => record.account === selectedAccount);
     }
     
-    renderTable(filteredRecords, selectedAccount);
+    // 2. (新) 篩選日期
+    let dateFilterPrefix = '';
+    if (selectedYear !== 'all') {
+        dateFilterPrefix = selectedYear;
+        if (selectedMonth !== 'all') {
+            dateFilterPrefix += '-' + selectedMonth; // e.g., "2023-07"
+        }
+    }
+    
+    if (dateFilterPrefix !== '') {
+        filteredRecords = filteredRecords.filter(r => r.date.startsWith(dateFilterPrefix));
+    }
+    
+    // (新) 傳入篩選條件以更新標題
+    renderTable(filteredRecords, selectedAccount, selectedYear, selectedMonth);
     calculateStats(filteredRecords, selectedAccount);
     
     // 這幾個永遠用全部資料
     const sortedAccounts = getSortedAccountNames();
     updateEventDatalist(); 
     updateAccountFilter(sortedAccounts);
-    updateAccountFormSelect(sortedAccounts); // (新) 更新表單的下拉選單
+    updateAccountFormSelect(sortedAccounts);
+    
+    // (新) 更新日期篩選器
+    updateYearFilter();
+    updateMonthFilter(); // 確保在載入時也更新月份的狀態
 }
 
 /**
  * 5. 渲染歷史紀錄表格
  */
-function renderTable(filteredRecords, selectedAccount) {
+function renderTable(filteredRecords, selectedAccount, selectedYear, selectedMonth) {
     tableBody.innerHTML = ''; // 清空表格
-    historyTableTitle.innerHTML = `<i class="bi bi-table"></i> 3. ${selectedAccount === 'all' ? '歷史紀錄 (Tidy Data)' : `${selectedAccount} 的歷史紀錄`}`;
     
+    // (新) 產生動態標題
+    let title = '3. ';
+    if (selectedAccount === 'all') {
+        title += '歷史紀錄 (Tidy Data)';
+    } else {
+        title += `${selectedAccount} 的歷史紀錄`;
+    }
+    
+    // (新) 加上日期標題
+    let dateTitle = '';
+    if (selectedYear !== 'all') {
+        dateTitle = selectedYear;
+        if (selectedMonth !== 'all') {
+            dateTitle += `-${selectedMonth}`;
+        }
+    }
+    
+    if (dateTitle) {
+        historyTableTitle.innerHTML = `<i class="bi bi-table"></i> ${title} <span class="text-muted small">(${dateTitle})</span>`;
+    } else {
+        historyTableTitle.innerHTML = `<i class="bi bi-table"></i> ${title}`;
+    }
+
     // 依照日期排序 (由舊到新)
     const sortedRecords = [...filteredRecords].sort((a, b) => a.date.localeCompare(b.date)); 
 
@@ -287,6 +337,57 @@ function updateAccountFilter(sortedAccounts) {
     // 嘗試還原之前的選項
     accountFilter.value = currentFilterValue;
 }
+
+/**
+ * (新) 10a. 更新年份篩選器
+ */
+function updateYearFilter() {
+    const currentYear = yearFilter.value;
+    
+    // 從所有紀錄中取得不重複的年份
+    const years = [...new Set(records.map(r => r.date.substring(0, 4)))]
+                    .sort((a, b) => b.localeCompare(a)); // 降冪排序 (e.g., 2025, 2024, 2023)
+    
+    yearFilter.innerHTML = '<option value="all">全部年份</option>'; // 重置
+    
+    years.forEach(year => {
+        const option = document.createElement('option');
+        option.value = year;
+        option.textContent = year;
+        yearFilter.appendChild(option);
+    });
+    
+    // 嘗試還原選項
+    yearFilter.value = currentYear;
+}
+
+/**
+ * (新) 10b. 更新月份篩選器
+ */
+function updateMonthFilter() {
+    const selectedYear = yearFilter.value;
+    const currentMonth = monthFilter.value;
+    
+    if (selectedYear === 'all') {
+        // 如果沒選年份，禁用月份
+        monthFilter.disabled = true;
+        monthFilter.innerHTML = '<option value="all">全部月份</option>';
+    } else {
+        // 如果選了年份，啟用月份
+        monthFilter.disabled = false;
+        monthFilter.innerHTML = `<option value="all">全部月份 (${selectedYear})</option>`;
+        for (let i = 1; i <= 12; i++) {
+            const month = i.toString().padStart(2, '0'); // 轉成 "01", "02" ...
+            const option = document.createElement('option');
+            option.value = month;
+            option.textContent = `${i}月`;
+            monthFilter.appendChild(option);
+        }
+        // 嘗試還原選項
+        monthFilter.value = currentMonth;
+    }
+}
+
 
 /**
  * 10. (新) 更新 "表單" 中的 "帳號" 下拉選單
@@ -521,6 +622,9 @@ importFileInput.addEventListener('change', (e) => {
 
 // 監聽篩選器變化
 accountFilter.addEventListener('change', renderAll);
+// (新) 監聽日期篩選器變化
+yearFilter.addEventListener('change', handleYearChange);
+monthFilter.addEventListener('change', renderAll);
 
 // --- (新) 監聽 "帳號" 下拉選單變化 ---
 accountSelect.addEventListener('change', () => {
@@ -540,6 +644,13 @@ cancelNewAccount.addEventListener('click', () => {
         accountSelect.value = accountSelect.options[0].value;
     }
 });
+
+// (新) 處理年份變更的函式
+function handleYearChange() {
+    // 當年份改變時，我們需要 (1) 更新月份的選項 (2) 重新渲染所有內容
+    updateMonthFilter();
+    renderAll();
+}
 
 loadRecords(); 
 renderAll();   

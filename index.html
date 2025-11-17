@@ -63,11 +63,26 @@
         <div id="stats-dashboard">
             <!-- 卡片1: 篩選器 & 總抽數 -->
             <div class="stat-card">
-                <h5 id="filter-title"><i class="bi bi-filter"></i> 篩選帳號</h5>
-                <select id="account-filter" class="form-select mb-3">
+                <h5 id="filter-title"><i class="bi bi-filter"></i> 篩選</h5>
+                
+                <label for="account-filter" class="form-label stat-filter-label">帳號</label>
+                <select id="account-filter" class="form-select mb-2">
                     <option value="all">全部帳號</option>
                     <!-- 其他選項由 JS 動態產生 -->
                 </select>
+
+                <label for="year-filter" class="form-label stat-filter-label">年份</label>
+                <select id="year-filter" class="form-select mb-2">
+                    <option value="all">全部年份</option>
+                    <!-- 其他選項由 JS 動態產生 -->
+                </select>
+
+                <label for="month-filter" class="form-label stat-filter-label">月份</label>
+                <select id="month-filter" class="form-select mb-3" disabled>
+                    <option value="all">全部月份</option>
+                    <!-- 其他選項由 JS 動態產生 -->
+                </select>
+                
                 <h5 id="total-pulls-title"><i class="bi bi-gem"></i> 總投入抽數</h5>
                 <h3 id="total-pulls">0</h3>
             </div>

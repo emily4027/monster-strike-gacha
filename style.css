@@ -46,6 +46,15 @@ h2 {
     margin-bottom: 0.5rem;
     font-size: 1.1rem;
 }
+
+/* (新) 篩選器卡片中的標籤樣式 */
+.stat-filter-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #6c757d;
+    margin-bottom: 0.25rem !important;
+}
+
 /* 讓活動卡片可滾動 */
 #event-stats-content {
     max-height: 250px; /* 限制最大高度 */

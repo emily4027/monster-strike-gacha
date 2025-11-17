@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>怪物彈珠抽蛋統計工具</title>
+    
+    <!-- 引入 Bootstrap CSS 讓介面更美觀 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- 引入 Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    
+    <!-- 引入您自己的 CSS 樣式表 -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <h1><i class="bi bi-gem"></i> 怪物彈珠抽蛋統計工具</h1>
+
+        <!-- 1. 資料輸入表單 -->
+        <h2><i class="bi bi-pencil-square"></i> 1. 輸入/編輯抽卡紀錄</h2>
+        <form id="gacha-form" class="row g-3 p-3 bg-white rounded shadow-sm">
+            <div class="col-md-3">
+                <label for="date" class="form-label">日期</label>
+                <input type="date" class="form-control" id="date" required>
+            </div>
+            <div class="col-md-9">
+                <label for="event" class="form-label">活動名稱</label>
+                <input type="text" class="form-control" id="event" placeholder="例如：孤獨搖滾、柯南第二彈" required list="event-datalist">
+                <datalist id="event-datalist">
+                    <!-- 選項會由 JS 動態載入 -->
+                </datalist>
+            </div>
+            <div class="col-md-3" id="account-field-container">
+                <label for="account-select" class="form-label">帳號</label>
+                <!-- 預設顯示的下拉選單 -->
+                <select id="account-select" class="form-select">
+                    <!-- 選項會由 JS 動態載入 -->
+                </select>
+                <!-- 點擊 "新增" 後顯示的輸入框組合 -->
+                <div id="account-input-group" style="display: none;">
+                    <input type="text" id="account-input" class="form-control" placeholder="輸入新帳號名稱">
+                    <button type="button" id="cancel-new-account" class="btn btn-link btn-sm p-0 mt-1">取消</button>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label for="pulls" class="form-label">投入抽數</label>
+                <input type="number" class="form-control" id="pulls" min="0" required placeholder="例如: 90">
+            </div>
+            <div class="col-md-6">
+                <label for="notes" class="form-label">獲得角色 / 備註</label>
+                <input type="text" class="form-control" id="notes" placeholder="例如：虹夏*3, 麒麟兒*2">
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> <span id="submit-btn-text">儲存紀錄</span></button>
+                <button type="button" class="btn btn-secondary" id="cancel-edit-btn" style="display: none;"><i class="bi bi-x-circle"></i> 取消編輯</button>
+            </div>
+        </form>
+
+        <!-- 2. 統計儀表板 -->
+        <h2><i class="bi bi-bar-chart-line-fill"></i> 2. 統計儀表板</h2>
+        <div id="stats-dashboard">
+            <!-- 卡片1: 篩選器 & 總抽數 -->
+            <div class="stat-card">
+                <h5 id="filter-title"><i class="bi bi-filter"></i> 篩選帳號</h5>
+                <select id="account-filter" class="form-select mb-3">
+                    <option value="all">全部帳號</option>
+                    <!-- 其他選項由 JS 動態產生 -->
+                </select>
+                <h5 id="total-pulls-title"><i class="bi bi-gem"></i> 總投入抽數</h5>
+                <h3 id="total-pulls">0</h3>
+            </div>
+            <!-- 卡片2: 各帳號抽數 -->
+            <div class="stat-card" id="account-stats">
+                <h5><i class="bi bi-people-fill"></i> 各帳號總抽數</h5>
+                <!-- 內容將由 JavaScript 動態生成 -->
+            </div>
+            <!-- 卡片3: 各活動抽數 (可滾動) -->
+            <div class="stat-card" id="event-stats">
+                <h5><i class="bi bi-calendar-event-fill"></i> 各活動總抽數</h5>
+                <!-- 內容將由 JavaScript 動態生成 (包含滾動區) -->
+            </div>
+        </div>
+
+        <!-- 3. 歷史紀錄表格 -->
+        <h2 id="history-table-title"><i class="bi bi-table"></i> 3. 歷史紀錄 (Tidy Data)</h2>
+        <div class="table-responsive bg-white rounded shadow-sm">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>日期</th>
+                        <th>活動</th>
+                        <th>帳號</th>
+                        <th>抽數</th>
+                        <th>備註</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="history-table-body">
+                    <!-- 內容將由 JavaScript 動態生成 -->
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- 4. 資料管理 -->
+        <h2 class="mt-4"><i class="bi bi-database-fill-gear"></i> 4. 資料管理</h2>
+        <div class="p-3 bg-white rounded shadow-sm">
+            <p class="mb-2">您可以將目前瀏覽器中的所有紀錄匯出為 `.json` 檔案備份，或從備份檔案中匯入。</p>
+            <p class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> 警告：匯入資料將會覆蓋您目前的所有紀錄！</p>
+            <button id="export-data" class="btn btn-success me-2"><i class="bi bi-download"></i> 匯出資料 (JSON)</button>
+            <button id="import-data" class="btn btn-info me-2"><i class="bi bi-upload"></i> 匯入資料 (JSON)</button>
+            <button id="clear-data" class="btn btn-danger"><i class="bi bi-trash3"></i> 清除所有本機資料</button>
+            <!-- 隱藏的檔案上傳欄位 -->
+            <input type="file" id="import-file-input" accept=".json" style="display: none;">
+        </div>
+    </div>
+
+    <!-- 訊息提示框 -->
+    <div id="toast-message"></div>
+
+    <!-- 引入您自己的 JavaScript 檔案 -->
+    <!-- 'defer' 屬性會讓瀏覽器在 HTML 剖析完畢後才執行腳本 -->
+    <script src="script.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+body { 
+    background-color: #f8f9fa;
+    padding-top: 20px;
+    padding-bottom: 50px;
+}
+h1, h2 { 
+    border-bottom: 2px solid #dee2e6; 
+    padding-bottom: 10px; 
+    margin-top: 25px; 
+}
+h1 {
+    color: #343a40;
+}
+h2 {
+    color: #495057;
+}
+#stats-dashboard { 
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px; 
+}
+.stat-card {
+    min-width: 280px;
+    border: none;
+    border-radius: 8px;
+    padding: 20px;
+    background-color: #ffffff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    transition: transform 0.2s;
+}
+.stat-card:hover {
+    transform: translateY(-3px);
+}
+.stat-card h5 {
+    color: #6c757d;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 0.9rem;
+}
+.stat-card h3 {
+    color: #007bff;
+    font-size: 2.5rem;
+    font-weight: bold;
+}
+.stat-card p {
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+}
+/* 讓活動卡片可滾動 */
+#event-stats-content {
+    max-height: 250px; /* 限制最大高度 */
+    overflow-y: auto; /* 超出高度就顯示滾動條 */
+    padding-right: 10px; /* 避免滾動條太貼近文字 */
+}
+.form-label {
+    font-weight: 600;
+}
+.btn-danger {
+    --bs-btn-bg: #dc3545;
+    --bs-btn-border-color: #dc3545;
+    --bs-btn-hover-bg: #c82333;
+    --bs-btn-hover-border-color: #bd2130;
+}
+.btn-warning {
+    --bs-btn-bg: #ffc107;
+    --bs-btn-border-color: #ffc107;
+    --bs-btn-hover-bg: #e0a800;
+    --bs-btn-hover-border-color: #d39e00;
+    color: #212529;
+}
+.table-hover tbody tr:hover {
+    background-color: #e9ecef;
+}
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+/* 訊息提示框樣式 */
+#toast-message {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: #28a745;
+    color: white;
+    padding: 15px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    font-size: 1.1rem;
+    z-index: 1050;
+    opacity: 0;
+    transition: opacity 0.5s, top 0.5s;
+}
+#toast-message.show {
+    opacity: 1;
+    top: 40px;
+}

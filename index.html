@@ -28,10 +28,15 @@
             <!-- (新) Event 欄位改為 Select/Input 組合 -->
             <div class="col-md-6" id="event-field-container">
                 <label for="event-select" class="form-label">活動名稱</label>
-                <!-- 預設顯示的下拉選單 -->
-                <select id="event-select" class="form-select">
-                    <!-- 選項會由 JS 動態載入 -->
-                </select>
+                <!-- (新) 將按鈕和下拉選單包在 .input-group 中 -->
+                <div class="input-group">
+                    <!-- 預設顯示的下拉選單 -->
+                    <select id="event-select" class="form-select">
+                        <!-- 選項會由 JS 動態載入 -->
+                    </select>
+                    <!-- (新) 手動 "編輯" 按鈕 -->
+                    <button type="button" class="btn btn-subtle" id="edit-event-btn" style="display: none;" title="編輯此活動"><i class="bi bi-pencil-square"></i></button>
+                </div>
                 <!-- 點擊 "新增" 後顯示的輸入框組合 -->
                 <div id="event-input-group" style="display: none;">
                     <input type="text" id="event-input" class="form-control" placeholder="輸入新活動名稱">
@@ -50,15 +55,11 @@
             </div>
             <div class="col-md-3" id="account-field-container">
                 <label for="account-select" class="form-label">帳號</label>
-                <!-- (新) 將按鈕和下拉選單包在 .input-group 中 -->
-                <div class="input-group">
-                    <!-- 預設顯示的下拉選單 -->
-                    <select id="account-select" class="form-select">
-                        <!-- 選項會由 JS 動態載入 -->
-                    </select>
-                    <!-- (新) 手動載入按鈕 -->
-                    <button type="button" class="btn btn-subtle" id="load-record-btn" style="display: none;" title="載入舊紀錄"><i class="bi bi-download"></i></button>
-                </div>
+                <!-- (舊) 移除 .input-group 和 load-record-btn -->
+                <!-- 預設顯示的下拉選單 -->
+                <select id="account-select" class="form-select">
+                    <!-- 選項會由 JS 動態載入 -->
+                </select>
                 <!-- 點擊 "新增" 後顯示的輸入框組合 -->
                 <div id="account-input-group" style="display: none;">
                     <input type="text" id="account-input" class="form-control" placeholder="輸入新帳號名稱">
@@ -155,7 +156,7 @@
     <!-- 訊息提示框 -->
     <div id="toast-message"></div>
 
-    <!-- 引入您自己的 JavaScript 檔案 -->
+    <!-- 引入您 eigenen JavaScript 檔案 -->
     <!-- 'defer' 屬性會讓瀏覽器在 HTML 剖析完畢後才執行腳本 -->
     <script src="script.js" defer></script>
 </body>

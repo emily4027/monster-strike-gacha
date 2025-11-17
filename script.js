@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const eventInputGroup = document.getElementById('event-input-group');
     const eventInput = document.getElementById('event-input');
     const cancelNewEvent = document.getElementById('cancel-new-event');
+    const editEventBtn = document.getElementById('edit-event-btn'); // (新) 編輯活動按鈕
 
     // --- 帳號欄位的新變數 ---
     const accountSelect = document.getElementById('account-select');
@@ -20,12 +21,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelNewAccount = document.getElementById('cancel-new-account');
 
     // --- 欄位 ---
-    const dateInput = document.getElementById('date'); // (新) 日期欄位
+    const dateInput = document.getElementById('date');
     const pullsInput = document.getElementById('pulls');
     const notesInput = document.getElementById('notes');
 
-    // (新) 手動載入按鈕
-    const loadRecordBtn = document.getElementById('load-record-btn');
+    // (移除) loadRecordBtn
 
     const submitBtnText = document.getElementById('submit-btn-text');
     const cancelEditBtn = document.getElementById('cancel-edit-btn');
@@ -47,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let records = [];
     // 追蹤是否處於編輯模式
     let editMode = false;
-    let editId = null;
+    let editEventName = null; // (新) 儲存正在編輯的活動名稱
     // 追蹤是否正在新增帳號/活動
     let isAddingNewAccount = false;
     let isAddingNewEvent = false;
@@ -75,10 +75,15 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         const date = dateInput.value;
+        const tag = tagSelect.value;
+        const pulls = parseInt(pullsInput.value, 10);
+        const notes = notesInput.value;
 
         // --- 根據狀態獲取活動名稱 ---
         let event;
-        if (isAddingNewEvent) {
+        if (editMode) {
+            event = eventInput.value.trim(); // (新) 編輯模式下，從 "輸入框" 獲取新名稱
+        } else if (isAddingNewEvent) {
             event = eventInput.value.trim();
         } else {
             event = eventSelect.value;
@@ -92,58 +97,65 @@ document.addEventListener('DOMContentLoaded', () => {
             account = accountSelect.value;
         }
 
-        const pulls = parseInt(pullsInput.value, 10);
-        const notes = notesInput.value;
-        const tag = tagSelect.value;
-
         // --- 驗證 ---
-        if (!date) {
-            showToast('請選擇日期！', 'error');
-            return;
-        }
-        if (!event || event === '--new--') {
-            showToast('請輸入或選擇有效的活動！', 'error');
-            return;
-        }
-        if (!account || account === '--new--') {
-            showToast('請輸入或選擇有效的帳號！', 'error');
-            return;
-        }
-        if (isNaN(pulls) || pulls < 0) {
-            showToast('請輸入有效的抽數！', 'error');
-            return;
+        if (!date) { showToast('請選擇日期！', 'error'); return; }
+        if (!event || event === '--new--') { showToast('請輸入或選擇有效的活動！', 'error'); return; }
+        if (!account || account === '--new--') { showToast('請輸入或選擇有效的帳號！', 'error'); return; }
+        
+        // (新) 批次編輯和一般編輯的驗證
+        if (account === '--batch--') {
+            // 批次編輯不需要驗證 pulls
+        } else if (isNaN(pulls) || pulls < 0) {
+            // 一般編輯/新增 需要驗證 pulls
+            showToast('請輸入有效的抽數！', 'error'); return;
         }
 
-        if (editMode && editId !== null) {
-            // --- 一般更新 (UPDATE) 邏輯 ---
-            const recordToUpdate = records.find(r => r.id === editId);
-            if (recordToUpdate) {
-                recordToUpdate.date = date;
-                recordToUpdate.event = event;
-                recordToUpdate.account = account;
-                recordToUpdate.pulls = pulls;
-                recordToUpdate.notes = notes;
-                recordToUpdate.tag = tag;
+
+        if (editMode) {
+            // --- (新) 更新 (UPDATE) 邏輯 ---
+            if (account === '--batch--') {
+                // --- 批次更新 ---
+                let updatedCount = 0;
+                records.forEach(r => {
+                    if (r.event === editEventName) {
+                        r.event = event; // (新) 連活動名稱一起更新
+                        r.date = date; // 更新日期
+                        r.tag = tag;   // 更新標籤
+                        updatedCount++;
+                    }
+                });
+                showToast(`已批次更新 ${updatedCount} 筆紀錄！`, 'success');
+            } else {
+                // --- 單筆更新 ---
+                const recordToUpdate = records.find(r => r.event === editEventName && r.account === account);
+                if (recordToUpdate) {
+                    recordToUpdate.event = event; // (新) 連活動名稱一起更新
+                    recordToUpdate.date = date;
+                    recordToUpdate.tag = tag;
+                    recordToUpdate.pulls = pulls;
+                    recordToUpdate.notes = notes;
+                    // (注意：編輯模式下不允許更改 event 和 account 名稱)
+                    showToast('紀錄已更新！', 'success');
+                } else {
+                    // (新) 如果在編輯模式下，但該帳號沒有紀錄，則轉為 "新增"
+                    // (例如：羽入、梨花有抽，但沙都子沒抽。點編輯後，選沙都子，會是新增)
+                    const newRecord = { id: Date.now(), date, event, account, pulls, notes, tag };
+                    records.push(newRecord);
+                    showToast('已為此帳號新增紀錄！', 'success');
+                }
             }
-            showToast('紀錄已更新！', 'success');
-
         } else {
             // --- 新增 (CREATE) 邏輯 ---
-            // (新) 再次檢查是否存在 (避免重複提交)
             const existingRecord = records.find(r =>
                 r.date === date && r.event === event && r.account === account
             );
             if (existingRecord) {
-                // (新) 提示：如果紀錄已存在，詢問是否要載入
-                showToast('紀錄已存在。請點擊"載入"按鈕進行編輯。', 'info');
-                checkIfRecordExists(); // 確保"載入"按鈕可見
+                showToast('錯誤：該筆紀錄已存在。請點擊活動旁的"編輯"按鈕。', 'error');
+                handleEventSelectChange(); // 確保 "編輯" 按鈕可見
                 return;
             }
 
-            const newRecord = {
-                id: Date.now(),
-                date, event, account, pulls, notes, tag
-            };
+            const newRecord = { id: Date.now(), date, event, account, pulls, notes, tag };
             records.push(newRecord);
             showToast('紀錄已儲存！', 'success');
         }
@@ -206,9 +218,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 這幾個永遠用全部資料
         const sortedAccounts = getSortedAccountNames();
-        updateEventFormSelect();
+        updateEventFormSelect(); // (新) 參數移除
         updateAccountFilter(sortedAccounts);
-        updateAccountFormSelect(sortedAccounts);
+        
+        // (新) 只有在非編輯模式下才更新帳號表單
+        // (避免在編輯時，選單被重置)
+        if (!editMode) {
+            updateAccountFormSelect(sortedAccounts); // (新) 參數移除
+        }
 
         updateYearFilter();
         updateMonthFilter();
@@ -253,12 +270,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.setAttribute('data-tag', record.tag);
             }
 
-            // (新) 在渲染表格時，也清理活動名稱
             const cleanEventName = getCleanEventName(record.event, record.date);
 
             row.innerHTML = `
                 <td>${record.date}</td>
-                <td>${cleanEventName}</td> <!-- (新) 使用清理過的名稱 -->
+                <td>${cleanEventName}</td>
                 <td>${record.account}</td>
                 <td>${record.pulls}</td>
                 <td>${record.notes}</td>
@@ -319,14 +335,9 @@ document.addEventListener('DOMContentLoaded', () => {
             scrollableContent.innerHTML = `<p><i>尚無資料</i></p>`;
         } else {
             for (const [event, data] of sortedEvents) {
-                // (新) 同時獲取年份和月份
                 const year = data.firstDate.split('-')[0];
                 const month = parseInt(data.firstDate.split('-')[1], 10);
-
-                // (新) 使用輔助函式清理名稱
                 const displayEventName = getCleanEventName(event, data.firstDate);
-
-                // (新) 更新日期標籤格式為 "YYYY年 M月"，並增加寬度
                 scrollableContent.innerHTML += `<p><span class="text-muted small me-2" style="display: inline-block; width: 75px;">${year}年 ${month}月</span> ${displayEventName}: <strong>${data.pulls.toLocaleString()}</strong> 抽</p>`;
             }
         }
@@ -363,11 +374,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const year = date.substring(0, 4);
         const monthInt = parseInt(date.split('-')[1], 10);
 
-        // 檢查 "2023-9月"
         const pattern1 = `${year}-${monthInt}月`;
-        // 檢查 "2023年9月"
         const pattern2 = `${year}年${monthInt}月`;
-        // 檢查 "2023/9月"
         const pattern3 = `${year}/${monthInt}月`;
 
         if (displayEventName.startsWith(pattern1)) {
@@ -378,7 +386,6 @@ document.addEventListener('DOMContentLoaded', () => {
             displayEventName = displayEventName.substring(pattern3.length).trim();
         }
 
-        // 如果清理後變空字串 (例如活動名稱就叫 "2023-9月")，就退回原始名稱
         if (displayEventName === "") {
             displayEventName = event;
         }
@@ -392,9 +399,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentEvent = eventSelect.value;
         const eventNames = [...new Set(records.map(r => r.event))].sort((a, b) => a.localeCompare(b));
 
-        eventSelect.innerHTML = ''; // 清空
+        eventSelect.innerHTML = '';
 
-        // (新) 新增活動選項放最上面
         const newOption = document.createElement('option');
         newOption.value = '--new--';
         newOption.textContent = '-- 新增活動 --';
@@ -409,7 +415,6 @@ document.addEventListener('DOMContentLoaded', () => {
             eventSelect.appendChild(option);
         });
 
-        // 嘗試還原
         if (eventNames.includes(currentEvent)) {
             eventSelect.value = currentEvent;
         }
@@ -462,7 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (selectedYear === 'all') {
             monthFilter.disabled = true;
-            monthFilter.value = 'all'; // (新) 確保重置
+            monthFilter.value = 'all';
             monthFilter.innerHTML = '<option value="all">全部月份</option>';
         } else {
             monthFilter.disabled = false;
@@ -481,20 +486,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /**
      * 10c. 更新 "表單" 中的 "帳號" 下拉選單
+     * (新) 增加 isEditMode 參數
      */
-    function updateAccountFormSelect(sortedAccounts) {
+    function updateAccountFormSelect(sortedAccounts, options = { isEditMode: false }) {
         const currentAccount = accountSelect.value;
-        accountSelect.innerHTML = ''; // 清空
+        accountSelect.innerHTML = '';
 
-        // (新) 新增帳號選項放最上面
-        const newOption = document.createElement('option');
-        newOption.value = '--new--';
-        newOption.textContent = '-- 新增帳號 --';
-        newOption.style.fontStyle = 'italic';
-        newOption.style.color = '#0d6efd';
-        accountSelect.appendChild(newOption);
-
-        // (移除 "全部帳號 (僅編輯)" 選項)
+        // (新) 根據是否為編輯模式，決定是否加入 "批次" 選項
+        if (options.isEditMode) {
+            const batchOption = document.createElement('option');
+            batchOption.value = '--batch--';
+            batchOption.textContent = '-- 全部帳號 (僅編輯) --';
+            batchOption.style.color = 'blue';
+            accountSelect.appendChild(batchOption);
+        } else {
+            const newOption = document.createElement('option');
+            newOption.value = '--new--';
+            newOption.textContent = '-- 新增帳號 --';
+            newOption.style.fontStyle = 'italic';
+            newOption.style.color = '#0d6efd';
+            accountSelect.appendChild(newOption);
+        }
 
         sortedAccounts.forEach(name => {
             const option = document.createElement('option');
@@ -523,7 +535,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 records = records.filter(record => record.id !== idToDelete);
                 saveRecords();
                 renderAll();
-                resetFormState(); // (新) 重置表單，萬一剛好正在編輯被刪除的項目
+                resetFormState();
                 showToast('紀錄已刪除', 'success');
             }
         } else if (editButton) {
@@ -536,17 +548,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 showEventSelectUI();
                 showAccountSelectUI();
 
-                // 2. 設定表單的值
-                dateInput.value = recordToEdit.date;
+                // 2. 設定 "活動"
                 eventSelect.value = recordToEdit.event;
+                
+                // 3. (新) 手動觸發 "編輯" 按鈕邏輯
+                // 這會鎖定活動、設定 editEventName、並載入 "批次" 選項
+                enterEditMode(); 
+
+                // 4. 設定 "帳號" (在 "批次" 選項載入後)
                 accountSelect.value = recordToEdit.account;
 
-                // 3. (新) 手動觸發 checkIfRecordExists (這會顯示 "載入" 按鈕)
-                checkIfRecordExists();
-                
-                // 4. (新) 提示使用者點擊 "載入" 按鈕
+                // 5. (新) 手動載入該帳號的資料
+                loadRecordForEdit(recordToEdit.account);
+
+                // 6. 捲動到最上方
                 window.scrollTo({ top: 0, behavior: 'smooth' });
-                showToast('請點擊"載入"按鈕以編輯', 'info');
+                showToast('請在上方表單編輯', 'info');
             }
         }
     });
@@ -565,30 +582,36 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function resetFormState() {
         editMode = false;
-        editId = null;
+        editEventName = null; // (新)
         form.reset();
         tagSelect.value = 'none';
         dateInput.valueAsDate = new Date();
+        
         submitBtnText.textContent = '儲存紀錄';
         cancelEditBtn.style.display = 'none';
 
+        // (新) 解鎖活動欄位 (移除 disabled)
+        eventSelect.disabled = false;
+        // (新) 隱藏 "編輯" 按鈕
+        editEventBtn.style.display = 'none';
+
+        // (新) 啟用 pulls/notes
+        togglePullFields(true);
+
         // 重置活動欄位
-        showEventSelectUI();
+        showEventSelectUI(); // (新) 確保顯示的是下拉選單
         if (eventSelect.options.length > 0) {
             eventSelect.value = eventSelect.options[0].value; // 選回 "-- 新增活動 --"
         }
 
         // 重置帳號欄位
         showAccountSelectUI();
-        updateAccountFormSelect(getSortedAccountNames()); // 重建選單
+        updateAccountFormSelect(getSortedAccountNames(), { isEditMode: false }); // (新) 傳入 false
         if ([...accountSelect.options].some(opt => opt.value === preferredAccountOrder[0])) {
             accountSelect.value = preferredAccountOrder[0];
         } else if (accountSelect.options.length > 1) { // [0] 是 "新增"
             accountSelect.value = accountSelect.options[1].value;
         }
-
-        // (新) 重置時也檢查一次
-        checkIfRecordExists();
     }
 
     /**
@@ -600,7 +623,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (type === 'error') {
             bgColor = '#dc3545';
         } else if (type === 'info') {
-            bgColor = '#0d6efd'; 
+            bgColor = '#0d6efd';
         }
         toastMessage.style.backgroundColor = bgColor;
         toastMessage.classList.add('show');
@@ -627,8 +650,8 @@ document.addEventListener('DOMContentLoaded', () => {
         accountSelect.style.display = 'none';
         accountInputGroup.style.display = 'block';
         isAddingNewAccount = true;
-        accountInput.value = ''; // 清空
-        accountInput.focus(); // 自動對焦
+        accountInput.value = '';
+        accountInput.focus();
     }
 
     /**
@@ -647,9 +670,27 @@ document.addEventListener('DOMContentLoaded', () => {
         eventSelect.style.display = 'none';
         eventInputGroup.style.display = 'block';
         isAddingNewEvent = true;
-        eventInput.value = ''; // 清空
-        eventInput.focus(); // 自動對焦
+        eventInput.value = '';
+        eventInput.focus();
     }
+
+    // --- (新) 啟用/禁用 pulls 和 notes ---
+    function togglePullFields(enabled) {
+        if (enabled) {
+            pullsInput.disabled = false;
+            notesInput.disabled = false;
+            pullsInput.classList.remove('field-disabled');
+            notesInput.classList.remove('field-disabled');
+        } else {
+            pullsInput.disabled = true;
+            notesInput.disabled = true;
+            pullsInput.classList.add('field-disabled');
+            notesInput.classList.add('field-disabled');
+            pullsInput.value = ''; // 禁用時清空
+            notesInput.value = ''; // 禁用時清空
+        }
+    }
+
 
     // --- 15. 資料管理功能 ---
 
@@ -730,67 +771,68 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
-    // --- (新) 核心邏輯：檢查紀錄是否存在並"顯示按鈕" ---
-    function checkIfRecordExists() {
-        // 只有在非 "新增" 模式時才檢查
-        if (isAddingNewEvent || isAddingNewAccount) {
-            loadRecordBtn.style.display = 'none'; // 隱藏載入按鈕
-            setFormMode('new'); // 強制新增
-            return;
-        }
+    // --- (新) 核心邏輯：進入編輯模式 ---
+    function enterEditMode() {
+        const eventName = eventSelect.value;
+        if (eventName === '--new--' || eventName === null) return;
 
-        const date = dateInput.value;
-        const event = eventSelect.value;
-        const account = accountSelect.value;
+        editMode = true;
+        editEventName = eventName; // 鎖定正在編輯的 "原始" 活動名稱
 
-        // 如果 "帳號" 或 "活動" 是 "--new--"
-        if (account === '--new--' || event === '--new--') {
-            loadRecordBtn.style.display = 'none'; // 隱藏載入按鈕
-            setFormMode('new'); // 強制新增
-            return;
-        }
+        // 1. 更新 UI
+        submitBtnText.textContent = '更新紀錄';
+        cancelEditBtn.style.display = 'inline-block';
+        editEventBtn.style.display = 'none'; // 隱藏自己
+        
+        // (新) 顯示 "輸入框" 並填入原始名稱，取代 "鎖定下拉選單"
+        showEventInputUI();
+        eventInput.value = eventName;
 
-        // 尋找完全符合的紀錄
-        const existingRecord = records.find(r =>
-            r.date === date && r.event === event && r.account === account
-        );
+        // 2. 重建帳號選單 (加入 "批次" 選項)
+        updateAccountFormSelect(getSortedAccountNames(), { isEditMode: true });
 
-        if (existingRecord) {
-            // --- 找到了：顯示"載入"按鈕 ---
-            loadRecordBtn.style.display = 'block';
-            
-            // (新) 如果 "不是" 處於編輯模式，就保持 "新增" 模式
-            // (避免使用者只是想查看，結果表單被鎖在 "更新" 模式)
-            if (!editMode) {
-                setFormMode('new');
-            }
+        // 3. 預先載入 "批次" 模式的資料 (日期/標籤)
+        loadRecordForEdit('--batch--');
 
-        } else {
-            // --- 沒找到：隱藏"載N"按鈕並切換到新增模式 ---
-            loadRecordBtn.style.display = 'none';
-            setFormMode('new');
-        }
+        showToast('進入編輯模式', 'info');
     }
 
     /**
-     * (新) 輔助函式：切換表單模式 (新增/編輯)
+     * (新) 核心邏輯：在編輯模式下，根據帳號選擇載入資料
      */
-    function setFormMode(mode) {
-        if (mode === 'edit') {
-            editMode = true;
-            submitBtnText.textContent = '更新紀錄';
-            cancelEditBtn.style.display = 'inline-block';
+    function loadRecordForEdit(accountName) {
+        if (!editMode) return; // 必須在編輯模式
+
+        let recordToLoad = null;
+
+        if (accountName === '--batch--') {
+            // 載入 "批次" 模式：
+            // 1. 禁用 pulls/notes
+            togglePullFields(false);
+            // 2. 尋找此活動的第一筆紀錄，作為日期/標籤的模板
+            recordToLoad = records.find(r => r.event === editEventName);
         } else {
-            // 'new'
-            editMode = false;
-            editId = null;
-            // 清空特定欄位
+            // 載入 "特定帳號" 模式：
+            // 1. 啟用 pulls/notes
+            togglePullFields(true);
+            // 2. 尋找完全符合的紀錄
+            recordToLoad = records.find(r => r.event === editEventName && r.account === accountName);
+        }
+
+        if (recordToLoad) {
+            // 找到了，載入資料
+            dateInput.value = recordToLoad.date;
+            tagSelect.value = recordToLoad.tag || 'none';
+
+            if (accountName !== '--batch--') {
+                pullsInput.value = recordToLoad.pulls;
+                notesInput.value = recordToLoad.notes;
+            }
+        } else {
+            // 沒找到 (例如：選了一個 "新帳號" 或該帳號沒有此活動紀錄)
+            // 清空 pulls/notes，但保留 date/tag (來自"批次"的模板)
             pullsInput.value = '';
             notesInput.value = '';
-            tagSelect.value = 'none';
-
-            submitBtnText.textContent = '儲存紀錄';
-            cancelEditBtn.style.display = 'none';
         }
     }
 
@@ -802,37 +844,42 @@ document.addEventListener('DOMContentLoaded', () => {
     yearFilter.addEventListener('change', handleYearChange);
     monthFilter.addEventListener('change', renderAll);
 
-    // (新) 監聽表單主欄位的變化
-    dateInput.addEventListener('change', checkIfRecordExists);
-    
     // (新) 監聽 "活動" 下拉選單變化
     function handleEventSelectChange() {
         if (eventSelect.value === '--new--') {
             showEventInputUI();
-            checkIfRecordExists(); // 確保按鈕隱藏
+            editEventBtn.style.display = 'none'; // 隱藏 "編輯" 按鈕
         } else {
-            checkIfRecordExists(); // 檢查是否存在
+            // 選擇了已存在的活動
+            showEventSelectUI(); // 確保顯示的是下拉選單
+            editEventBtn.style.display = 'block'; // (新) 顯示 "編輯" 按鈕
         }
     }
     eventSelect.addEventListener('change', handleEventSelectChange);
+
+    // (新) 監聽 "編輯活動" 按鈕
+    editEventBtn.addEventListener('click', enterEditMode);
 
 
     // (新) 監聽 "取消新增活動" 按鈕
     cancelNewEvent.addEventListener('click', () => {
         showEventSelectUI();
         if (eventSelect.options.length > 0) {
-            eventSelect.value = eventSelect.options[0].value; // 選回 "-- 新g"
+            eventSelect.value = eventSelect.options[0].value; // 選回 "-- 新增活動 --"
         }
-        checkIfRecordExists(); // 檢查
+        editEventBtn.style.display = 'none'; // 隱藏 "編輯" 按鈕
     });
 
     // (新) 監聽 "帳號" 下拉選單變化
     function handleAccountSelectChange() {
         if (accountSelect.value === '--new--') {
             showAccountInputUI();
-            checkIfRecordExists(); // 確保按鈕隱藏
         } else {
-            checkIfRecordExists(); // 檢查是否存在
+            showAccountSelectUI(); // 確保顯示的是下拉選單
+            // (新) 如果在編輯模式下，觸發載入
+            if (editMode) {
+                loadRecordForEdit(accountSelect.value);
+            }
         }
     }
     accountSelect.addEventListener('change', handleAccountSelectChange);
@@ -842,41 +889,18 @@ document.addEventListener('DOMContentLoaded', () => {
     cancelNewAccount.addEventListener('click', () => {
         showAccountSelectUI();
         // 重置下拉選單的值
-        const firstAccount = preferredAccountOrder[0];
-        if ([...accountSelect.options].some(opt => opt.value === firstAccount)) {
-            accountSelect.value = firstAccount;
-        } else if (accountSelect.options.length > 1) { // [0] 是 "新增"
-            accountSelect.value = accountSelect.options[1].value;
-        }
-        checkIfRecordExists(); // 檢查
-    });
-
-    // (新) 監聽 "載入舊紀錄" 按鈕
-    loadRecordBtn.addEventListener('click', () => {
-        const date = dateInput.value;
-        const event = eventSelect.value;
-        const account = accountSelect.value;
-
-        const existingRecord = records.find(r =>
-            r.date === date && r.event === event && r.account === account
-        );
-
-        if (existingRecord) {
-            // --- 找到了：手動載入資料並切換到編輯模式 ---
-            pullsInput.value = existingRecord.pulls;
-            notesInput.value = existingRecord.notes;
-            tagSelect.value = existingRecord.tag || 'none';
-            editId = existingRecord.id;
-            
-            setFormMode('edit');
-            loadRecordBtn.style.display = 'none'; // 載入後隱藏
-            showToast('紀錄已載入，請開始編輯', 'success');
+        // (新) 根據是否在編輯模式，決定預設值
+        if (editMode) {
+            accountSelect.value = '--batch--';
         } else {
-            // 理論上不會發生，因為按鈕是隱藏的
-            showToast('找不到紀錄 (錯誤)', 'error');
+            const firstAccount = preferredAccountOrder[0];
+            if ([...accountSelect.options].some(opt => opt.value === firstAccount)) {
+                accountSelect.value = firstAccount;
+            } else if (accountSelect.options.length > 1) { // [0] 是 "新增"
+                accountSelect.value = accountSelect.options[1].value;
+            }
         }
     });
-
 
     // 處理年份變更的函式
     function handleYearChange() {
@@ -886,5 +910,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     loadRecords();
     renderAll();
-    resetFormSthate(); // (新) 用 resetFormState 初始化，確保載入正確日期並觸發檢查
+    resetFormState();
 });

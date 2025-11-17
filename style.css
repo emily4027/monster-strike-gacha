@@ -64,6 +64,14 @@ h2 {
 .form-label {
     font-weight: 600;
 }
+
+/* (新) 批次編輯時，禁用欄位的樣式 */
+.field-disabled {
+    background-color: #e9ecef;
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
 .btn-danger {
     --bs-btn-bg: #dc3545;
     --bs-btn-border-color: #dc3545;
@@ -80,6 +88,25 @@ h2 {
 .table-hover tbody tr:hover {
     background-color: #e9ecef;
 }
+
+/* (新) 歷史紀錄表格的標籤顏色 */
+tr[data-tag="honke"] {
+    /* 紅色 */
+    border-left: 5px solid #dc3545;
+}
+tr[data-tag="collab"] {
+    /* 紫色 */
+    border-left: 5px solid #6610f2;
+}
+tr[data-tag="free"] {
+    /* 綠色 */
+    border-left: 5px solid #198754;
+}
+tr[data-tag="orb"] {
+    /* 橘色 */
+    border-left: 5px solid #ffc107;
+}
+
 .btn-sm {
     padding: 0.25rem 0.5rem;
     font-size: 0.875rem;

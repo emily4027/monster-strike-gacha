@@ -25,12 +25,28 @@
                 <label for="date" class="form-label">日期</label>
                 <input type="date" class="form-control" id="date" required>
             </div>
-            <div class="col-md-9">
-                <label for="event" class="form-label">活動名稱</label>
-                <input type="text" class="form-control" id="event" placeholder="例如：孤獨搖滾、柯南第二彈" required list="event-datalist">
-                <datalist id="event-datalist">
+            <!-- (新) Event 欄位改為 Select/Input 組合 -->
+            <div class="col-md-6" id="event-field-container">
+                <label for="event-select" class="form-label">活動名稱</label>
+                <!-- 預設顯示的下拉選單 -->
+                <select id="event-select" class="form-select">
                     <!-- 選項會由 JS 動態載入 -->
-                </datalist>
+                </select>
+                <!-- 點擊 "新增" 後顯示的輸入框組合 -->
+                <div id="event-input-group" style="display: none;">
+                    <input type="text" id="event-input" class="form-control" placeholder="輸入新活動名稱">
+                    <button type="button" id="cancel-new-event" class="btn btn-link btn-sm p-0 mt-1">取消</button>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label for="tag-select" class="form-label">標籤</label>
+                <select id="tag-select" class="form-select">
+                    <option value="none" selected>-- 選擇標籤 --</option>
+                    <option value="honke">本家</option>
+                    <option value="collab">合作</option>
+                    <option value="free">免費</option>
+                    <option value="orb">寶珠</option>
+                </select>
             </div>
             <div class="col-md-3" id="account-field-container">
                 <label for="account-select" class="form-label">帳號</label>

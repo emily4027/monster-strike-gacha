@@ -231,12 +231,14 @@ document.addEventListener('DOMContentLoaded', () => {
         renderTable(filteredRecords, selectedAccount, selectedYear, selectedMonth);
         calculateStats(filteredRecords, selectedAccount);
 
-        // 這幾個永遠用全部資料
+        // --- (新) 呼叫更新 ---
         const sortedAccounts = getSortedAccountNames();
-        updateEventFormSelect(); 
+        // (新) 讓表單下拉選單根據儀表板的篩選結果變化
+        updateEventFormSelect(filteredRecords); 
         updateAccountFilter(sortedAccounts);
         
         if (!editMode) {
+            // (新) 帳號下拉選單 *不* 應該被篩選，所以我們傳入 "全部" 帳號
             updateAccountFormSelect(sortedAccounts); 
         }
 
@@ -433,10 +435,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /**
      * 8. (新) 更新 "表單" 中的 "活動" 下拉選單
+     * (新) 接收 recordsToUse 參數
      */
-    function updateEventFormSelect() {
+    function updateEventFormSelect(recordsToUse) {
         const currentEvent = eventSelect.value;
-        const eventNames = [...new Set(records.map(r => r.event))].sort((a, b) => a.localeCompare(b));
+        // (新) 使用傳入的 recordsToUse 來建立名稱列表
+        const eventNames = [...new Set(recordsToUse.map(r => r.event))].sort((a, b) => a.localeCompare(b));
 
         eventSelect.innerHTML = '';
 
@@ -587,6 +591,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const recordToEdit = records.find(r => r.id === idToEdit);
 
             if (recordToEdit) {
+                // (新) 檢查是否在全局編輯模式
+                if (!globalEditMode) {
+                    showToast('請先點擊右下角的 "進入編輯模式"', 'info');
+                    return;
+                }
+                
                 // 1. 確保 UI 是下拉選單 (會被 enterEditMode 覆蓋)
                 // showEventSelectUI();
                 showAccountSelectUI();
@@ -637,7 +647,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 重置活動欄位
         showEventSelectUI(); // (新) 確保顯示的是下拉選單
-        updateEventFormSelect(); // (新) 重建選單
+        // (新) 重置時，使用 "全部" 紀錄來重建下拉選單
+        updateEventFormSelect(records); 
         eventSelect.value = '--new--'; // 選回 "-- 新增活動 --"
         isAddingNewEvent = false; 
         

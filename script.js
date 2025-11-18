@@ -60,18 +60,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // 定義帳號優先順序
     const preferredAccountOrder = ['羽入', '梨花', '沙都子'];
 
-    // --- 範例資料 ---
-    const sampleData = [
-        { id: 1700000000001, date: '2025-05-15', event: '2025-5月 孤獨搖滾', account: '羽入', pulls: 90, notes: '90抽 虹夏*3 麒麟兒*2 久遠 摩奇亞', tag: 'collab' },
-        { id: 1700000000002, date: '2025-05-15', event: '2025-5月 孤獨搖滾', account: '梨花', pulls: 90, notes: '90抽 虹夏 山田 奈特 喜多', tag: 'collab' },
-        { id: 1700000000003, date: '2025-05-15', event: '2025-5月 孤獨搖滾', account: '沙都子', pulls: 70, notes: '70抽 虹夏*3 山田*3 摩奇亞 艾兒', tag: 'collab' },
-        { id: 1700000000004, date: '2025-05-01', event: '2025-05月 柯南第二彈', account: '羽入', pulls: 100, notes: '100抽 安室透*2 新一*2 基德', tag: 'collab' },
-        { id: 1700000000005, date: '2025-05-01', event: '2025-05月 柯南第二彈', account: '梨花', pulls: 100, notes: '100抽 安室透*3 基德*2 柯南 新一', tag: 'collab' },
-        { id: 1700000000006, date: '2025-05-01', event: '2025-05月 柯南第二彈', account: '沙都子', pulls: 100, notes: '100抽 柯南 赤井 新一*4', tag: 'collab' },
-        { id: 1700000000007, date: '2025-04-20', event: '2025-4月 2.5次元', account: '羽入', pulls: 20, notes: '20抽 諾諾亞*2', tag: 'honke' },
-        { id: 1700000000008, date: '2025-04-20', event: '2025-4月 2.5次元', account: '梨花', pulls: 20, notes: '20抽 利利艾路*2  美莉艾拉', tag: 'honke' },
-        { id: 1700000000009, date: '2025-04-20', event: '2025-4月 2.5次元', account: '沙都子', pulls: 40, notes: '40抽', tag: 'honke' },
-    ];
+    // --- 範例資料 (已清空) ---
+    const sampleData = [];
 
     // --- 核心功能 ---
 

@@ -54,15 +54,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 範例資料 ---
     const sampleData = [
-        { id: 1700000000001, date: '2025-05-15', event: '2025-5月 孤獨搖滾', account: '羽入', pulls: 90, notes: '虹夏*3 麒麟兒*2 久遠 摩奇亞', tag: 'collab' },
-        { id: 1700000000002, date: '2025-05-15', event: '2025-5月 孤獨搖滾', account: '梨花', pulls: 90, notes: '虹夏 山田 奈特 喜多', tag: 'collab' },
-        { id: 1700000000003, date: '2025-05-15', event: '2025-5月 孤獨搖滾', account: '沙都子', pulls: 70, notes: '虹夏*3 山田*3 摩奇亞 艾兒', tag: 'collab' },
-        { id: 1700000000004, date: '2025-05-01', event: '2025-5月 柯南第二彈', account: '羽入', pulls: 100, notes: '安室透*2 新一*2 基德', tag: 'collab' },
-        { id: 1700000000005, date: '2025-05-01', event: '2025-5月 柯南第二彈', account: '梨花', pulls: 100, notes: '安室透*3 基德*2 柯南 新一', tag: 'collab' },
-        { id: 1700000000006, date: '2025-05-01', event: '2025-5月 柯南第二彈', account: '沙都子', pulls: 100, notes: '柯南 赤井 新一*4', tag: 'collab' },
-        { id: 1700000000007, date: '2025-04-20', event: '2025-4月 2.5次元', account: '羽入', pulls: 20, notes: '諾諾亞*2', tag: 'honke' },
-        { id: 1700000000008, date: '2025-04-20', event: '2025-4月 2.5次元', account: '梨花', pulls: 20, notes: '利利艾路*2  美莉艾拉', tag: 'honke' },
-        { id: 1700000000009, date: '2025-04-20', event: '2025-4月 2.5次元', account: '沙都子', pulls: 40, notes: '', tag: 'honke' },
+        { id: 1700000000001, date: '2025-05-15', event: '2025-5月 孤獨搖滾', account: '羽入', pulls: 90, notes: '90抽 虹夏*3 麒麟兒*2 久遠 摩奇亞', tag: 'collab' },
+        { id: 1700000000002, date: '2025-05-15', event: '2025-5月 孤獨搖滾', account: '梨花', pulls: 90, notes: '90抽 虹夏 山田 奈特 喜多', tag: 'collab' },
+        { id: 1700000000003, date: '2025-05-15', event: '2025-5月 孤獨搖滾', account: '沙都子', pulls: 70, notes: '70抽 虹夏*3 山田*3 摩奇亞 艾兒', tag: 'collab' },
+        { id: 1700000000004, date: '2025-05-01', event: '2025-05月 柯南第二彈', account: '羽入', pulls: 100, notes: '100抽 安室透*2 新一*2 基德', tag: 'collab' },
+        { id: 1700000000005, date: '2025-05-01', event: '2025-05月 柯南第二彈', account: '梨花', pulls: 100, notes: '100抽 安室透*3 基德*2 柯南 新一', tag: 'collab' },
+        { id: 1700000000006, date: '2025-05-01', event: '2025-05月 柯南第二彈', account: '沙都子', pulls: 100, notes: '100抽 柯南 赤井 新一*4', tag: 'collab' },
+        { id: 1700000000007, date: '2025-04-20', event: '2025-4月 2.5次元', account: '羽入', pulls: 20, notes: '20抽 諾諾亞*2', tag: 'honke' },
+        { id: 1700000000008, date: '2025-04-20', event: '2025-4月 2.5次元', account: '梨花', pulls: 20, notes: '20抽 利利艾路*2  美莉艾拉', tag: 'honke' },
+        { id: 1700000000009, date: '2025-04-20', event: '2025-4月 2.5次元', account: '沙都子', pulls: 40, notes: '40抽', tag: 'honke' },
     ];
 
     // --- 核心功能 ---
@@ -266,13 +266,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const cleanEventName = getCleanEventName(record.event, record.date);
+            // (新) 呼叫 getCleanNotes 來清理 "獲得角色" 欄位
+            const cleanNotes = getCleanNotes(record.notes); 
 
             row.innerHTML = `
                 <td>${record.date}</td>
                 <td>${cleanEventName}</td>
                 <td>${record.account}</td>
                 <td>${record.pulls}</td>
-                <td>${record.notes}</td>
+                <td>${cleanNotes}</td> 
                 <td class="text-nowrap">
                     <button class="btn btn-warning btn-sm me-2" data-id="${record.id}" title="編輯"><i class="bi bi-pencil"></i></button>
                     <button class="btn btn-danger btn-sm" data-id="${record.id}" title="刪除"><i class="bi bi-trash"></i></button>
@@ -363,29 +365,53 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /**
      * (新) 輔助函式：清理活動名稱中的日期前綴
+     * (Request 3: 更新邏輯以支援 01月)
      */
     function getCleanEventName(event, date) {
         let displayEventName = event;
         const year = date.substring(0, 4);
-        const monthInt = parseInt(date.split('-')[1], 10);
+        const monthNum = parseInt(date.split('-')[1], 10); // e.g., 5
+        const monthStr = date.split('-')[1]; // e.g., "05"
 
-        const pattern1 = `${year}-${monthInt}月`;
-        const pattern2 = `${year}年${monthInt}月`;
-        const pattern3 = `${year}/${monthInt}月`;
-
-        if (displayEventName.startsWith(pattern1)) {
-            displayEventName = displayEventName.substring(pattern1.length).trim();
-        } else if (displayEventName.startsWith(pattern2)) {
-            displayEventName = displayEventName.substring(pattern2.length).trim();
-        } else if (displayEventName.startsWith(pattern3)) {
-            displayEventName = displayEventName.substring(pattern3.length).trim();
+        // 建立所有可能的日期格式 (有/無 補零)
+        const patterns = [
+            `${year}-${monthStr}月`, // 2025-05月
+            `${year}-${monthNum}月`, // 2025-5月
+            `${year}年${monthStr}月`, // 2025年05月
+            `${year}年${monthNum}月`, // 2025年5月
+            `${year}/${monthStr}月`, // 2025/05月
+            `${year}/${monthNum}月`  // 2025/5月
+        ];
+        
+        // 迭代檢查，找到第一個符合的就移除
+        for (const pattern of patterns) {
+            if (displayEventName.startsWith(pattern)) {
+                displayEventName = displayEventName.substring(pattern.length).trim();
+                break; // 找到就跳出迴圈
+            }
         }
 
         if (displayEventName === "") {
-            displayEventName = event;
+            displayEventName = event; // Fallback
         }
         return displayEventName;
     }
+
+    /**
+     * (新) 輔助函式：清理 "獲得角色" 欄位中的抽數
+     * (Request 2)
+     */
+    function getCleanNotes(notes) {
+        if (typeof notes !== 'string' || !notes) return '';
+        
+        // 移除開頭的 "XX抽" 或 "？？抽"
+        // ^ = 尋找字串開頭
+        // (\d+) = 一個以上的數字
+        // (\?\?|？？) = 兩個問號 (半形或全形)
+        // \s* = 零個或多個空白
+        return notes.replace(/^(\d+)\s*抽\s*/, '').replace(/^(\?\?|？？)\s*抽\s*/, '').trim();
+    }
+
 
     /**
      * 8. (新) 更新 "表單" 中的 "活動" 下拉選單

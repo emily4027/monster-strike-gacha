@@ -20,63 +20,71 @@
 
         <!-- 1. 資料輸入表單 -->
         <h2><i class="bi bi-pencil-square"></i> 1. 輸入/編輯抽卡紀錄</h2>
-        <form id="gacha-form" class="row g-3 p-3 bg-white rounded shadow-sm">
-            <div class="col-md-3">
-                <label for="date" class="form-label">日期</label>
-                <input type="date" class="form-control" id="date" required>
-            </div>
-            <!-- (新) Event 欄位改為 Select/Input 組合 -->
-            <div class="col-md-6" id="event-field-container">
-                <label for="event-select" class="form-label">活動名稱</label>
-                <!-- (新) 將按鈕和下拉選單包在 .input-group 中 -->
-                <div class="input-group">
-                    <!-- 預設顯示的下拉選單 -->
-                    <select id="event-select" class="form-select">
+        <form id="gacha-form" class="p-3 bg-white rounded shadow-sm">
+            <!-- (新) 將所有欄位包裹在 fieldset 中，預設禁用 -->
+            <fieldset id="gacha-fieldset" class="row g-3" disabled>
+                <div class="col-md-3">
+                    <label for="date" class="form-label">日期</label>
+                    <input type="date" class="form-control" id="date" required>
+                </div>
+                <!-- Event 欄位 -->
+                <div class="col-md-6" id="event-field-container">
+                    <label for="event-select" class="form-label">活動名稱</label>
+                    <div class="input-group">
+                        <select id="event-select" class="form-select">
+                            <!-- 選項會由 JS 動態載入 -->
+                        </select>
+                        <button type="button" class="btn btn-subtle" id="edit-event-btn" style="display: none;" title="編輯此活動"><i class="bi bi-pencil-square"></i></button>
+                    </div>
+                    <div id="event-input-group" style="display: none;">
+                        <input type="text" id="event-input" class="form-control" placeholder="輸入新活動名稱">
+                        <button type="button" id="cancel-new-event" class="btn btn-link btn-sm p-0 mt-1">取消</button>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label for="tag-select" class="form-label">標籤</label>
+                    <select id="tag-select" class="form-select">
+                        <option value="none" selected>-- 選擇標籤 --</option>
+                        <option value="honke">本家</option>
+                        <option value="collab">合作</option>
+                        <option value="free">免費</option>
+                        <option value="orb">寶珠</option>
+                    </select>
+                </div>
+                <div class="col-md-3" id="account-field-container">
+                    <label for="account-select" class="form-label">帳號</label>
+                    <select id="account-select" class="form-select">
                         <!-- 選項會由 JS 動態載入 -->
                     </select>
-                    <!-- (新) 手動 "編輯" 按鈕 -->
-                    <button type="button" class="btn btn-subtle" id="edit-event-btn" style="display: none;" title="編輯此活動"><i class="bi bi-pencil-square"></i></button>
+                    <div id="account-input-group" style="display: none;">
+                        <input type="text" id="account-input" class="form-control" placeholder="輸入新帳號名稱">
+                        <button type="button" id="cancel-new-account" class="btn btn-link btn-sm p-0 mt-1">取消</button>
+                    </div>
                 </div>
-                <!-- 點擊 "新增" 後顯示的輸入框組合 -->
-                <div id="event-input-group" style="display: none;">
-                    <input type="text" id="event-input" class="form-control" placeholder="輸入新活動名稱">
-                    <button type="button" id="cancel-new-event" class="btn btn-link btn-sm p-0 mt-1">取消</button>
+                <div class="col-md-3">
+                    <label for="pulls" class="form-label">投入抽數</label>
+                    <input type="number" class="form-control" id="pulls" min="0" required placeholder="例如: 90">
                 </div>
-            </div>
-            <div class="col-md-3">
-                <label for="tag-select" class="form-label">標籤</label>
-                <select id="tag-select" class="form-select">
-                    <option value="none" selected>-- 選擇標籤 --</option>
-                    <option value="honke">本家</option>
-                    <option value="collab">合作</option>
-                    <option value="free">免費</option>
-                    <option value="orb">寶珠</option>
-                </select>
-            </div>
-            <div class="col-md-3" id="account-field-container">
-                <label for="account-select" class="form-label">帳號</label>
-                <!-- (舊) 移除 .input-group 和 load-record-btn -->
-                <!-- 預設顯示的下拉選單 -->
-                <select id="account-select" class="form-select">
-                    <!-- 選項會由 JS 動態載入 -->
-                </select>
-                <!-- 點擊 "新增" 後顯示的輸入框組合 -->
-                <div id="account-input-group" style="display: none;">
-                    <input type="text" id="account-input" class="form-control" placeholder="輸入新帳號名稱">
-                    <button type="button" id="cancel-new-account" class="btn btn-link btn-sm p-0 mt-1">取消</button>
+                <div class="col-md-6">
+                    <label for="notes" class="form-label">獲得角色</label>
+                    <input type="text" class="form-control" id="notes" placeholder="例如：虹夏*3, 麒麟兒*2 (抽數會自動移除)">
                 </div>
-            </div>
-            <div class="col-md-3">
-                <label for="pulls" class="form-label">投入抽數</label>
-                <input type="number" class="form-control" id="pulls" min="0" required placeholder="例如: 90">
-            </div>
-            <div class="col-md-6">
-                <label for="notes" class="form-label">獲得角色</label>
-                <input type="text" class="form-control" id="notes" placeholder="例如：虹夏*3, 麒麟兒*2 (抽數會自動移除)">
-            </div>
-            <div class="col-12">
-                <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> <span id="submit-btn-text">儲存紀錄</span></button>
-                <button type="button" class="btn btn-secondary" id="cancel-edit-btn" style="display: none;"><i class="bi bi-x-circle"></i> 取消編輯</button>
+            </fieldset>
+            
+            <!-- (新) 按鈕列獨立於 fieldset 之外，以便永遠可見 -->
+            <div class="row mt-3">
+                <div class="col-12 d-flex justify-content-between align-items-center">
+                    <div> <!-- 儲存/取消按鈕 (左側) -->
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> <span id="submit-btn-text">儲存紀錄</span></button>
+                        <button type="button" class="btn btn-secondary" id="cancel-edit-btn" style="display: none;"><i class="bi bi-x-circle"></i> 取消編輯</button>
+                    </div>
+                    <div> <!-- (新) 模式切換按鈕 (右側) -->
+                        <button type="button" class="btn btn-outline-secondary" id="mode-toggle-btn" title="切換檢視/編輯模式">
+                            <i class="bi bi-eye"></i> 
+                            <span id="mode-toggle-text">檢視模式 (點此編輯)</span>
+                        </button>
+                    </div>
+                </div>
             </div>
         </form>
 

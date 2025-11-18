@@ -14,6 +14,31 @@ h1 {
 h2 {
     color: #495057;
 }
+
+/* (新) 預設隱藏表單和表格編輯按鈕 */
+#gacha-fieldset {
+    transition: opacity 0.3s;
+}
+#gacha-fieldset:disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+#history-table-body .btn-warning,
+#history-table-body .btn-danger {
+    display: none;
+}
+
+/* (新) 當進入編輯模式時，顯示它們 */
+body.edit-mode-active #gacha-fieldset {
+    opacity: 1;
+    pointer-events: auto;
+}
+body.edit-mode-active #history-table-body .btn-warning,
+body.edit-mode-active #history-table-body .btn-danger {
+    display: inline-block;
+}
+
+
 #stats-dashboard { 
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

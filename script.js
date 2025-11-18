@@ -3,6 +3,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 變數定義 ---
     const form = document.getElementById('gacha-form');
+    // (新) 鎖定表單欄位
+    const gachaFieldset = document.getElementById('gacha-fieldset');
+    // (新) 模式切換按鈕
+    const modeToggleBtn = document.getElementById('mode-toggle-btn');
+    const modeToggleText = document.getElementById('mode-toggle-text');
+
     const tableBody = document.getElementById('history-table-body');
     const toastMessage = document.getElementById('toast-message');
     const tagSelect = document.getElementById('tag-select');
@@ -43,6 +49,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 應用程式的核心資料庫 (一個存放所有紀錄的陣列)
     let records = [];
+    // (新) 全局編輯模式狀態
+    let globalEditMode = false;
     // 追蹤是否處於編輯模式
     let editMode = false;
     let editEventName = null; // (新) 儲存正在編輯的活動名稱
@@ -72,6 +80,13 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     form.addEventListener('submit', (e) => {
         e.preventDefault();
+        
+        // (新) 如果不是在編輯模式，不允許提交
+        if (!globalEditMode) {
+            showToast('請先點擊右下角的 "進入編輯模式"', 'info');
+            return;
+        }
+        
         const date = dateInput.value;
         const tag = tagSelect.value;
         const pulls = parseInt(pullsInput.value, 10);
@@ -79,12 +94,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- 根據狀態獲取活動名稱 ---
         let event;
-        if (editMode) {
-            event = eventInput.value.trim(); // (新) 編輯模式下，從 "輸入框" 獲取新名稱
-        } else if (isAddingNewEvent) {
+        // (新) 無論新增或編輯，都是從 "輸入框" 獲取
+        if (isAddingNewEvent || editMode) { 
             event = eventInput.value.trim();
         } else {
+            // (新) 這是 "從未" 點擊 "編輯" 按鈕，直接儲存的 "新增" 邏輯 (雖然 UI 不鼓勵)
             event = eventSelect.value;
+            if (event === '--new--') {
+                 showToast('請點擊"編輯"按鈕來輸入新活動名稱！', 'error'); return;
+            }
         }
 
         // --- 根據狀態獲取帳號名稱 ---
@@ -436,8 +454,12 @@ document.addEventListener('DOMContentLoaded', () => {
             eventSelect.appendChild(option);
         });
 
+        // (新) 邏輯修正：確保在 "新增" 模式下，能正確選回 "--new--"
         if (eventNames.includes(currentEvent)) {
             eventSelect.value = currentEvent;
+        } else if (!editMode) { 
+            // 如果不是在編輯模式，就預設選 "--new--"
+            eventSelect.value = '--new--';
         }
     }
 
@@ -610,30 +632,23 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBtnText.textContent = '儲存紀錄';
         cancelEditBtn.style.display = 'none';
 
-        // (新) 隱藏 "編輯" 按鈕
-        editEventBtn.style.display = 'none';
-
         // (新) 啟用 pulls/notes
         togglePullFields(true);
 
         // 重置活動欄位
         showEventSelectUI(); // (新) 確保顯示的是下拉選單
-        if (eventSelect.options.length > 0) {
-            eventSelect.value = eventSelect.options[0].value; // 選回 "-- 新增活動 --"
-            
-            // (新) 手動觸發 "活動" 選單的 change 事件
-            // 這是為了修復 "新增活動" 在重置後失效的 BUG
-            // 它會自動呼叫 showEventInputUI() 並隱藏 "編輯" 按鈕
-            handleEventSelectChange(); 
-        }
+        updateEventFormSelect(); // (新) 重建選單
+        eventSelect.value = '--new--'; // 選回 "-- 新增活動 --"
+        isAddingNewEvent = false; 
+        
+        // (新) 依據新邏輯，呼叫 change handler 來顯示 "編輯" 按鈕
+        handleEventSelectChange(); 
 
         // 重置帳號欄位
         showAccountSelectUI();
         updateAccountFormSelect(getSortedAccountNames(), { isEditMode: false }); // (新) 傳入 false
-        if ([...accountSelect.options].some(opt => opt.value === preferredAccountOrder[0])) {
-            accountSelect.value = preferredAccountOrder[0];
-        } else if (accountSelect.options.length > 1) { // [0] 是 "新增"
-            accountSelect.value = accountSelect.options[1].value;
+        if (accountSelect.options.length > 0) {
+            accountSelect.value = accountSelect.options[0].value; // 預設選 "-- 新增帳號 --"
         }
     }
 
@@ -692,7 +707,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function showEventInputUI() {
         eventSelect.style.display = 'none';
         eventInputGroup.style.display = 'block';
-        isAddingNewEvent = true; // (修正) 這裡應該是 true
+        isAddingNewEvent = true;
         eventInput.value = '';
         eventInput.focus();
     }
@@ -794,10 +809,43 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
-    // --- (新) 核心邏輯：進入編輯模式 ---
+    // --- (新) 核心邏輯：進入 "新增" 模式 ---
+    function enterAddMode() {
+        editMode = false; // 我們是新增，不是編輯
+
+        // 1. 更新 UI
+        submitBtnText.textContent = '儲存紀錄';
+        cancelEditBtn.style.display = 'inline-block';
+        editEventBtn.style.display = 'none'; // 隱藏 "編輯" 按鈕
+
+        // 2. 顯示 "活動" 輸入框
+        showEventInputUI();
+        eventInput.value = ''; // 清空
+
+        // 3. 重置其他欄位
+        dateInput.valueAsDate = new Date();
+        tagSelect.value = 'none';
+        togglePullFields(true); // 確保啟用
+        pullsInput.value = '';
+        notesInput.value = '';
+
+        // 4. 重置 "帳號" 下拉選單為 "新增" 模式
+        showAccountSelectUI();
+        updateAccountFormSelect(getSortedAccountNames(), { isEditMode: false });
+        accountSelect.value = '--new--'; // 預設選 "-- 新增帳號 --"
+
+        showToast('請輸入新活動的資訊', 'info');
+    }
+
+
+    // --- (新) 核心邏輯：進入 "編輯" 模式 ---
     function enterEditMode() {
         const eventName = eventSelect.value;
-        if (eventName === '--new--' || eventName === null) return;
+        // (新) 增加防呆，如果選 "--new--" 但不知為何觸發了 edit, 就轉去 add
+        if (eventName === '--new--' || eventName === null) {
+            enterAddMode();
+            return;
+        }
 
         editMode = true;
         editEventName = eventName; // 鎖定正在編輯的 "原始" 活動名稱
@@ -865,6 +913,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 程式初始化 ---
 
+    // (新) 監聽全局模式切換按鈕
+    modeToggleBtn.addEventListener('click', () => {
+        globalEditMode = !globalEditMode; // 切換狀態
+        if (globalEditMode) {
+            // --- 進入編輯模式 ---
+            document.body.classList.add('edit-mode-active');
+            gachaFieldset.disabled = false; // 解鎖表單
+            modeToggleBtn.classList.remove('btn-outline-secondary');
+            modeToggleBtn.classList.add('btn-primary');
+            modeToggleBtn.innerHTML = '<i class="bi bi-check-circle"></i> <span id="mode-toggle-text">完成編輯 (點此檢視)</span>';
+            resetFormState(); // 重置表單，準備輸入
+            showToast('已進入編輯模式', 'info');
+        } else {
+            // --- 退出編輯模式 ---
+            document.body.classList.remove('edit-mode-active');
+            gachaFieldset.disabled = true; // 鎖定表單
+            modeToggleBtn.classList.add('btn-outline-secondary');
+            modeToggleBtn.classList.remove('btn-primary');
+            modeToggleBtn.innerHTML = '<i class="bi bi-eye"></i> <span id="mode-toggle-text">檢視模式 (點此編輯)</span>';
+            resetFormState(); // 重置表單，清除殘留
+            showToast('已退出編輯模式', 'info');
+        }
+    });
+
     // 監聽篩選器變化
     accountFilter.addEventListener('change', renderAll);
     yearFilter.addEventListener('change', handleYearChange);
@@ -872,28 +944,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // (新) 監聽 "活動" 下拉選單變化
     function handleEventSelectChange() {
-        if (eventSelect.value === '--new--') {
-            showEventInputUI();
-            editEventBtn.style.display = 'none'; // 隱藏 "編輯" 按鈕
-        } else {
-            // 選擇了已存在的活動
+        // (新) 邏輯簡化：只要有選東西，就顯示 "編輯" 按鈕
+        if (eventSelect.value) {
+            editEventBtn.style.display = 'block';
             showEventSelectUI(); // 確保顯示的是下拉選單
-            editEventBtn.style.display = 'block'; // (新) 顯示 "編輯" 按鈕
+        } else {
+            editEventBtn.style.display = 'none';
         }
     }
     eventSelect.addEventListener('change', handleEventSelectChange);
 
     // (新) 監聽 "編輯活動" 按鈕
-    editEventBtn.addEventListener('click', enterEditMode);
+    editEventBtn.addEventListener('click', () => {
+        if (eventSelect.value === '--new--') {
+            enterAddMode();
+        } else {
+            enterEditMode();
+        }
+    });
 
 
     // (新) 監聽 "取消新增活動" 按鈕
     cancelNewEvent.addEventListener('click', () => {
-        showEventSelectUI();
-        if (eventSelect.options.length > 0) {
-            eventSelect.value = eventSelect.options[0].value; // 選回 "-- 新增活動 --"
-        }
-        editEventBtn.style.display = 'none'; // 隱藏 "編輯" 按鈕
+        // (新) "取消" 按鈕現在等同於重置表單
+        resetFormState();
     });
 
     // (新) 監聽 "帳號" 下拉選單變化
@@ -919,12 +993,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (editMode) {
             accountSelect.value = '--batch--';
         } else {
-            const firstAccount = preferredAccountOrder[0];
-            if ([...accountSelect.options].some(opt => opt.value === firstAccount)) {
-                accountSelect.value = firstAccount;
-            } else if (accountSelect.options.length > 1) { // [0] 是 "新增"
-                accountSelect.value = accountSelect.options[1].value;
-            }
+            accountSelect.value = '--new--'; // (新) 預設選 "-- 新增帳號 --"
         }
     });
 
@@ -937,4 +1006,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadRecords();
     renderAll();
     resetFormState();
+    // (新) 頁面載入時，預設鎖定表單
+    gachaFieldset.disabled = true;
 });

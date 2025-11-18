@@ -2,7 +2,9 @@ body {
     background-color: #f8f9fa;
     padding-top: 20px;
     padding-bottom: 50px;
+    color: #495057;
 }
+
 h1, h2 { 
     border-bottom: 2px solid #dee2e6; 
     padding-bottom: 10px; 
@@ -38,7 +40,6 @@ body.edit-mode-active #history-table-body .btn-danger {
     display: inline-block;
 }
 
-
 #stats-dashboard { 
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -72,7 +73,7 @@ body.edit-mode-active #history-table-body .btn-danger {
     font-size: 1.1rem;
 }
 
-/* (新) 篩選器卡片中的標籤樣式 */
+/* 篩選器卡片中的標籤樣式 */
 .stat-filter-label {
     font-size: 0.85rem;
     font-weight: 600;
@@ -86,18 +87,35 @@ body.edit-mode-active #history-table-body .btn-danger {
     overflow-y: auto; /* 超出高度就顯示滾動條 */
     padding-right: 10px; /* 避免滾動條太貼近文字 */
 }
+
+/* --- (新) 歷史紀錄表格滾輪設定 --- */
+.table-responsive {
+    max-height: 600px; /* 設定表格最大高度，超過就會出現滾輪 */
+    overflow-y: auto; /* 垂直方向自動滾動 */
+    border: 1px solid #dee2e6; /* 加個邊框讓範圍更明顯 */
+}
+
+/* 固定表頭：讓標題列在捲動時固定在上方 */
+.table-responsive thead th {
+    position: sticky;
+    top: 0;
+    background-color: #e9ecef; /* 必須要有背景色，不然內容會穿透 */
+    z-index: 1; /* 確保在內容之上 */
+    box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1); /* 加個小陰影更有層次感 */
+}
+
 .form-label {
     font-weight: 600;
 }
 
-/* (新) 批次編輯時，禁用欄位的樣式 */
+/* 批次編輯時，禁用欄位的樣式 */
 .field-disabled {
     background-color: #e9ecef;
     opacity: 0.7;
     cursor: not-allowed;
 }
 
-/* (新) 載入按鈕的輔助樣式 */
+/* 載入按鈕的輔助樣式 */
 .btn-subtle {
     border-color: #ced4da; /* 匹配 .form-select 的邊框 */
     color: #0d6efd;
@@ -124,7 +142,7 @@ body.edit-mode-active #history-table-body .btn-danger {
     background-color: #e9ecef;
 }
 
-/* (新) 歷史紀錄表格的標籤顏色 */
+/* 歷史紀錄表格的標籤顏色 */
 tr[data-tag="honke"] {
     /* 紅色 */
     border-left: 5px solid #dc3545;

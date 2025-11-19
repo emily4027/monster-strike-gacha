@@ -3,8 +3,8 @@
     --bs-body-font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
     --bs-body-bg: transparent; /* 使用自訂背景 */
     --primary-color: #333;
-    --accent-blue: #5c6bc0;
-    --accent-light-blue: #e8eaf6;
+    --accent-blue: #5c6bc0; /* 主色調 */
+    --accent-light-blue: #e8eaf6; /* 懸停色 */
     --card-bg: rgba(255, 255, 255, 0.95);
     --card-shadow: 0 8px 20px rgba(0,0,0,0.05);
     --border-radius: 16px;
@@ -23,115 +23,130 @@ body {
 .bg-decoration {
     position: fixed;
     top: -50%; left: -50%; width: 200%; height: 200%;
-    background: radial-gradient(circle at center, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 60%);
-    z-index: -1; pointer-events: none;
+    background: radial-gradient(circle at center, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 70%);
+    z-index: -1;
 }
 
-.main-container { max-width: 1100px; }
+.main-container {
+    max-width: 1200px;
+}
 
-/* --- Header --- */
-.app-header { margin-bottom: 30px; }
+/* --- App Header & 標題 --- */
+.app-header {
+    margin-bottom: 30px;
+}
+.app-header h1 {
+    font-weight: 700;
+    font-size: 2.2rem;
+    color: var(--primary-color);
+    margin-top: 10px;
+    border-bottom: none;
+    padding-bottom: 0;
+}
 .icon-badge {
-    font-size: 3rem;
-    background: var(--accent-light-blue);
-    width: 80px; height: 80px;
-    display: flex; align-items: center; justify-content: center;
+    font-size: 2rem;
+    background: var(--accent-blue);
+    color: white;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
-    box-shadow: 0 4px 15px rgba(92, 107, 192, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
 }
-h1 { font-weight: 900; color: #2c3e50; margin: 0; }
 
-/* --- 卡片樣式 --- */
-.section-card, .stat-card {
-    background: var(--card-bg);
+.card-header h2 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--accent-blue);
+    border-bottom: 2px solid var(--accent-light-blue);
+    padding-bottom: 8px;
+    margin-bottom: 0;
+    margin-top: 0;
+}
+
+/* --- 區塊卡片樣式 --- */
+.section-card {
+    background-color: var(--card-bg);
     border-radius: var(--border-radius);
-    padding: 25px;
     box-shadow: var(--card-shadow);
-    border: 1px solid rgba(255,255,255,0.6);
-    transition: transform 0.2s;
+    padding: 20px;
+    border: 1px solid rgba(0,0,0,0.05);
 }
-.section-card { margin-bottom: 20px; }
-.stat-card:hover { transform: translateY(-3px); }
-
-.card-header {
-    border-bottom: 2px solid #f0f2f5;
-    margin-bottom: 20px;
-    padding-bottom: 10px;
-}
-h2 { font-size: 1.25rem; font-weight: 700; color: #34495e; margin: 0; }
-h5 { font-weight: 700; color: #7f8c8d; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; }
 
 /* --- 統計儀表板 --- */
-#stats-dashboard {
+#stats-dashboard { 
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px; 
 }
-.stat-total-box {
-    background: #f8f9fa;
-    border-radius: 10px;
-    padding: 15px;
-    text-align: center;
-    margin-top: 15px;
+.stat-card {
+    min-width: 280px;
+    border: 1px solid var(--accent-light-blue);
+    border-radius: 12px;
+    padding: 20px;
+    background-color: white;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    transition: transform 0.2s;
+}
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+.stat-card h5 {
+    color: #6c757d;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    margin-bottom: 5px;
+}
+.stat-card h3 {
+    color: var(--accent-blue);
+    font-size: 2rem;
+    font-weight: 700;
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+.stat-card p {
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
 }
 
-/* 讓活動卡片列表可滾動 */
+/* 篩選器卡片中的標籤樣式 */
+.stat-filter-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #6c757d;
+    margin-bottom: 0.25rem !important;
+}
+.stat-card .form-select, .stat-card .form-control {
+    font-size: 0.95rem;
+}
+
+/* 讓活動卡片可滾動 */
 #event-stats-content {
     max-height: 250px; 
-    overflow-y: auto;
-    padding-right: 5px;
-}
-#event-stats-content::-webkit-scrollbar { width: 6px; }
-#event-stats-content::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px; }
-#event-stats-content::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
-#event-stats-content::-webkit-scrollbar-thumb:hover { background: #bbb; }
-
-/* --- 輸入框與按鈕客製化 --- */
-.custom-input, .custom-select {
-    border-radius: 10px;
-    border: 1px solid #e0e0e0;
-    padding: 10px 15px;
-    background-color: #fdfdfd;
-}
-.custom-input:focus, .custom-select:focus {
-    border-color: var(--accent-blue);
-    box-shadow: 0 0 0 3px rgba(92, 107, 192, 0.15);
+    overflow-y: auto; 
+    padding-right: 10px; 
 }
 
-.custom-btn {
-    border-radius: 50px;
-    padding: 8px 24px;
+/* --- 紀錄編輯表單 --- */
+.form-label {
     font-weight: 600;
-    transition: all 0.2s;
+    color: var(--primary-color);
 }
-.custom-btn:hover { transform: translateY(-2px); }
-
-/* --- 表格優化 --- */
-.custom-table-container {
-    border-radius: 10px;
-    overflow: hidden;
-    border: 1px solid #eee;
-    max-height: 500px;
-    overflow-y: auto;
+.form-select, .form-control {
+    border-radius: 8px;
 }
-.table thead th {
-    background-color: #f1f3f5;
-    color: #555;
-    font-weight: 700;
-    border-bottom: none;
-    position: sticky;
-    top: 0;
-    z-index: 1;
+
+/* 批次編輯時，禁用欄位的樣式 */
+.field-disabled {
+    background-color: #e9ecef !important;
+    opacity: 0.8 !important;
+    cursor: not-allowed;
 }
-.table-hover tbody tr:hover { background-color: #f0f4ff; }
 
-/* 標籤顏色條 */
-tr[data-tag="honke"] { border-left: 4px solid #dc3545; }
-tr[data-tag="collab"] { border-left: 4px solid #6610f2; }
-tr[data-tag="free"] { border-left: 4px solid #198754; }
-tr[data-tag="orb"] { border-left: 4px solid #ffc107; }
-
-/* --- 編輯模式切換 --- */
+/* 編輯模式切換 */
 #gacha-fieldset { transition: opacity 0.3s; }
 #gacha-fieldset:disabled { opacity: 0.6; pointer-events: none; }
 #history-table-body .btn-warning, #history-table-body .btn-danger { display: none; }
@@ -139,40 +154,143 @@ body.edit-mode-active #gacha-fieldset { opacity: 1; pointer-events: auto; }
 body.edit-mode-active #history-table-body .btn-warning, 
 body.edit-mode-active #history-table-body .btn-danger { display: inline-block; }
 
-/* --- 回首頁按鈕 --- */
-.back-home-btn {
+/* 輔助按鈕 (如編輯活動) */
+.btn-subtle {
+    border-color: #ced4da; 
+    color: var(--accent-blue);
+    background-color: #f8f9fa;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+.btn-subtle:hover {
+    background-color: #e9ecef;
+}
+
+/* --- 歷史紀錄表格 --- */
+.table-responsive {
+    max-height: 60vh; 
+    overflow-y: auto; 
+    border: 1px solid #dee2e6;
+    border-radius: var(--border-radius);
+}
+
+/* 固定表頭 */
+.table-responsive thead th {
+    position: sticky;
+    top: 0;
+    background-color: #d1d9e7; 
+    z-index: 2; 
+    box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1); 
+}
+
+/* 歷史紀錄表格的標籤顏色 (左側邊框) */
+tr[data-tag="honke"] { border-left: 5px solid #dc3545; } 
+tr[data-tag="collab"] { border-left: 5px solid #6610f2; } 
+tr[data-tag="free"] { border-left: 5px solid #198754; } 
+tr[data-tag="orb"] { border-left: 5px solid #ffc107; } 
+
+/* 輔助/操作按鈕 */
+.btn-sm { padding: 0.25rem 0.5rem; font-size: 0.875rem; }
+
+/* 資料管理按鈕組 */
+.custom-btn {
+    border-radius: 8px;
+    font-weight: 500;
+}
+
+/* --- 懸浮工具箱菜單 (精準複製) --- */
+.toolbox-menu-wrapper {
     position: fixed;
     bottom: 30px;
     right: 30px;
-    background: #2c3e50;
+    z-index: 9999;
+    font-family: var(--bs-body-font-family);
+    display: flex;
+    flex-direction: column; 
+    align-items: flex-end; 
+    cursor: default; 
+}
+
+/* 主按鈕 */
+.toolbox-main-btn {
+    /* 使用您現有工具箱網站的主色調 */
+    background: #2c3e50; 
     color: white;
     padding: 12px 24px;
-    border-radius: 50px;
+    border-radius: 50px; 
     text-decoration: none;
     font-weight: 700;
     box-shadow: 0 10px 20px rgba(0,0,0,0.2);
     transition: all 0.3s;
-    z-index: 9999;
     display: flex;
     align-items: center;
     gap: 8px;
-    border: 2px solid rgba(255,255,255,0.2);
+    white-space: nowrap;
+    border: 2px solid rgba(255,255,255,0.5);
 }
-.back-home-btn:hover {
-    transform: translateY(-5px) scale(1.05);
-    box-shadow: 0 15px 30px rgba(0,0,0,0.3);
-    background: #34495e;
-    color: white;
+.toolbox-main-btn:hover {
+    background: #1f2a36;
 }
 
-/* --- Toast --- */
-#toast-message {
-    position: fixed; top: 20px; right: 20px;
-    background-color: #28a745; color: white;
-    padding: 12px 24px; border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-    font-weight: 600; z-index: 1050;
-    opacity: 0; transition: all 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55);
-    transform: translateY(-20px);
+/* 菜單列表容器 */
+.toolbox-items-list {
+    display: flex;
+    flex-direction: column;
+    /* 初始狀態：隱藏 */
+    max-height: 0;
+    overflow: hidden;
+    /* 懸停時，同時過渡 max-height 和 margin-bottom */
+    transition: max-height 0.4s ease-in-out, margin-bottom 0.4s ease-in-out;
+    background: white; 
+    border-radius: 12px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    min-width: 100%; 
+    margin-bottom: 0;
 }
-#toast-message.show { opacity: 1; transform: translateY(0); }
+
+/* Hover effect: Expand the list upwards */
+.toolbox-menu-wrapper:hover .toolbox-items-list {
+    max-height: 300px; /* 足夠高以顯示所有菜單項 */
+    margin-bottom: 8px; /* 在列表和主按鈕之間增加間隔 */
+}
+
+/* 菜單單一項目 */
+.toolbox-item {
+    padding: 10px 15px;
+    text-decoration: none;
+    color: var(--primary-color);
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap;
+    transition: background-color 0.2s;
+    border-radius: 0;
+    border-bottom: 1px solid rgba(0,0,0,0.05); 
+    width: 100%;
+}
+.toolbox-item:hover {
+    background-color: var(--accent-light-blue);
+    color: var(--accent-blue);
+}
+
+/* 圓角處理 */
+.toolbox-item:first-child {
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+}
+.toolbox-item:last-child {
+    border-bottom: none;
+    /* 這裡不需要底部圓角，因為列表位於主按鈕上方，除非是 active 項目 */
+}
+
+/* Active item (當前頁面) */
+.toolbox-item.active {
+    /* 使用深色主色調作為 Active 項目，符合圖中效果 */
+    background-color: var(--accent-blue); 
+    color: white;
+    font-weight: 700;
+}
+.toolbox-item.active:hover {
+    background-color: #4b5cae;
+}

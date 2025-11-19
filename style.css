@@ -1,185 +1,178 @@
-body { 
-    background-color: #f8f9fa;
+/* --- 變數覆蓋 (Bootstrap Override) --- */
+:root {
+    --bs-body-font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    --bs-body-bg: transparent; /* 使用自訂背景 */
+    --primary-color: #333;
+    --accent-blue: #5c6bc0;
+    --accent-light-blue: #e8eaf6;
+    --card-bg: rgba(255, 255, 255, 0.95);
+    --card-shadow: 0 8px 20px rgba(0,0,0,0.05);
+    --border-radius: 16px;
+}
+
+/* --- 全域背景 --- */
+body {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
     padding-top: 20px;
-    padding-bottom: 50px;
-    color: #495057;
+    padding-bottom: 60px;
+    color: var(--primary-color);
 }
 
-h1, h2 { 
-    border-bottom: 2px solid #dee2e6; 
-    padding-bottom: 10px; 
-    margin-top: 25px; 
-}
-h1 {
-    color: #343a40;
-}
-h2 {
-    color: #495057;
+/* 背景裝飾 */
+.bg-decoration {
+    position: fixed;
+    top: -50%; left: -50%; width: 200%; height: 200%;
+    background: radial-gradient(circle at center, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 60%);
+    z-index: -1; pointer-events: none;
 }
 
-/* (新) 預設隱藏表單和表格編輯按鈕 */
-#gacha-fieldset {
-    transition: opacity 0.3s;
-}
-#gacha-fieldset:disabled {
-    opacity: 0.5;
-    pointer-events: none;
-}
-#history-table-body .btn-warning,
-#history-table-body .btn-danger {
-    display: none;
-}
+.main-container { max-width: 1100px; }
 
-/* (新) 當進入編輯模式時，顯示它們 */
-body.edit-mode-active #gacha-fieldset {
-    opacity: 1;
-    pointer-events: auto;
+/* --- Header --- */
+.app-header { margin-bottom: 30px; }
+.icon-badge {
+    font-size: 3rem;
+    background: var(--accent-light-blue);
+    width: 80px; height: 80px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    box-shadow: 0 4px 15px rgba(92, 107, 192, 0.2);
 }
-body.edit-mode-active #history-table-body .btn-warning,
-body.edit-mode-active #history-table-body .btn-danger {
-    display: inline-block;
-}
+h1 { font-weight: 900; color: #2c3e50; margin: 0; }
 
-#stats-dashboard { 
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 20px; 
-}
-.stat-card {
-    min-width: 280px;
-    border: none;
-    border-radius: 8px;
-    padding: 20px;
-    background-color: #ffffff;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+/* --- 卡片樣式 --- */
+.section-card, .stat-card {
+    background: var(--card-bg);
+    border-radius: var(--border-radius);
+    padding: 25px;
+    box-shadow: var(--card-shadow);
+    border: 1px solid rgba(255,255,255,0.6);
     transition: transform 0.2s;
 }
-.stat-card:hover {
-    transform: translateY(-3px);
+.section-card { margin-bottom: 20px; }
+.stat-card:hover { transform: translateY(-3px); }
+
+.card-header {
+    border-bottom: 2px solid #f0f2f5;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
 }
-.stat-card h5 {
-    color: #6c757d;
-    font-weight: bold;
-    text-transform: uppercase;
-    font-size: 0.9rem;
+h2 { font-size: 1.25rem; font-weight: 700; color: #34495e; margin: 0; }
+h5 { font-weight: 700; color: #7f8c8d; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* --- 統計儀表板 --- */
+#stats-dashboard {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
 }
-.stat-card h3 {
-    color: #007bff;
-    font-size: 2.5rem;
-    font-weight: bold;
-}
-.stat-card p {
-    margin-bottom: 0.5rem;
-    font-size: 1.1rem;
+.stat-total-box {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 15px;
+    text-align: center;
+    margin-top: 15px;
 }
 
-/* 篩選器卡片中的標籤樣式 */
-.stat-filter-label {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #6c757d;
-    margin-bottom: 0.25rem !important;
-}
-
-/* 讓活動卡片可滾動 */
+/* 讓活動卡片列表可滾動 */
 #event-stats-content {
-    max-height: 250px; /* 限制最大高度 */
-    overflow-y: auto; /* 超出高度就顯示滾動條 */
-    padding-right: 10px; /* 避免滾動條太貼近文字 */
+    max-height: 250px; 
+    overflow-y: auto;
+    padding-right: 5px;
+}
+#event-stats-content::-webkit-scrollbar { width: 6px; }
+#event-stats-content::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px; }
+#event-stats-content::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+#event-stats-content::-webkit-scrollbar-thumb:hover { background: #bbb; }
+
+/* --- 輸入框與按鈕客製化 --- */
+.custom-input, .custom-select {
+    border-radius: 10px;
+    border: 1px solid #e0e0e0;
+    padding: 10px 15px;
+    background-color: #fdfdfd;
+}
+.custom-input:focus, .custom-select:focus {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(92, 107, 192, 0.15);
 }
 
-/* --- (新) 歷史紀錄表格滾輪設定 --- */
-.table-responsive {
-    max-height: 600px; /* 設定表格最大高度，超過就會出現滾輪 */
-    overflow-y: auto; /* 垂直方向自動滾動 */
-    border: 1px solid #dee2e6; /* 加個邊框讓範圍更明顯 */
+.custom-btn {
+    border-radius: 50px;
+    padding: 8px 24px;
+    font-weight: 600;
+    transition: all 0.2s;
 }
+.custom-btn:hover { transform: translateY(-2px); }
 
-/* 固定表頭：讓標題列在捲動時固定在上方 */
-.table-responsive thead th {
+/* --- 表格優化 --- */
+.custom-table-container {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #eee;
+    max-height: 500px;
+    overflow-y: auto;
+}
+.table thead th {
+    background-color: #f1f3f5;
+    color: #555;
+    font-weight: 700;
+    border-bottom: none;
     position: sticky;
     top: 0;
-    background-color: #e9ecef; /* 必須要有背景色，不然內容會穿透 */
-    z-index: 1; /* 確保在內容之上 */
-    box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1); /* 加個小陰影更有層次感 */
+    z-index: 1;
 }
+.table-hover tbody tr:hover { background-color: #f0f4ff; }
 
-.form-label {
-    font-weight: 600;
-}
+/* 標籤顏色條 */
+tr[data-tag="honke"] { border-left: 4px solid #dc3545; }
+tr[data-tag="collab"] { border-left: 4px solid #6610f2; }
+tr[data-tag="free"] { border-left: 4px solid #198754; }
+tr[data-tag="orb"] { border-left: 4px solid #ffc107; }
 
-/* 批次編輯時，禁用欄位的樣式 */
-.field-disabled {
-    background-color: #e9ecef;
-    opacity: 0.7;
-    cursor: not-allowed;
-}
+/* --- 編輯模式切換 --- */
+#gacha-fieldset { transition: opacity 0.3s; }
+#gacha-fieldset:disabled { opacity: 0.6; pointer-events: none; }
+#history-table-body .btn-warning, #history-table-body .btn-danger { display: none; }
+body.edit-mode-active #gacha-fieldset { opacity: 1; pointer-events: auto; }
+body.edit-mode-active #history-table-body .btn-warning, 
+body.edit-mode-active #history-table-body .btn-danger { display: inline-block; }
 
-/* 載入按鈕的輔助樣式 */
-.btn-subtle {
-    border-color: #ced4da; /* 匹配 .form-select 的邊框 */
-    color: #0d6efd;
-    background-color: #f8f9fa;
-}
-.btn-subtle:hover {
-    background-color: #e9ecef;
-}
-
-.btn-danger {
-    --bs-btn-bg: #dc3545;
-    --bs-btn-border-color: #dc3545;
-    --bs-btn-hover-bg: #c82333;
-    --bs-btn-hover-border-color: #bd2130;
-}
-.btn-warning {
-    --bs-btn-bg: #ffc107;
-    --bs-btn-border-color: #ffc107;
-    --bs-btn-hover-bg: #e0a800;
-    --bs-btn-hover-border-color: #d39e00;
-    color: #212529;
-}
-.table-hover tbody tr:hover {
-    background-color: #e9ecef;
-}
-
-/* 歷史紀錄表格的標籤顏色 */
-tr[data-tag="honke"] {
-    /* 紅色 */
-    border-left: 5px solid #dc3545;
-}
-tr[data-tag="collab"] {
-    /* 紫色 */
-    border-left: 5px solid #6610f2;
-}
-tr[data-tag="free"] {
-    /* 綠色 */
-    border-left: 5px solid #198754;
-}
-tr[data-tag="orb"] {
-    /* 橘色 */
-    border-left: 5px solid #ffc107;
-}
-
-.btn-sm {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.875rem;
-}
-/* 訊息提示框樣式 */
-#toast-message {
+/* --- 回首頁按鈕 --- */
+.back-home-btn {
     position: fixed;
-    top: 20px;
-    right: 20px;
-    background-color: #28a745;
+    bottom: 30px;
+    right: 30px;
+    background: #2c3e50;
     color: white;
-    padding: 15px 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    font-size: 1.1rem;
-    z-index: 1050;
-    opacity: 0;
-    transition: opacity 0.5s, top 0.5s;
+    padding: 12px 24px;
+    border-radius: 50px;
+    text-decoration: none;
+    font-weight: 700;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+    transition: all 0.3s;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 2px solid rgba(255,255,255,0.2);
 }
-#toast-message.show {
-    opacity: 1;
-    top: 40px;
+.back-home-btn:hover {
+    transform: translateY(-5px) scale(1.05);
+    box-shadow: 0 15px 30px rgba(0,0,0,0.3);
+    background: #34495e;
+    color: white;
 }
+
+/* --- Toast --- */
+#toast-message {
+    position: fixed; top: 20px; right: 20px;
+    background-color: #28a745; color: white;
+    padding: 12px 24px; border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    font-weight: 600; z-index: 1050;
+    opacity: 0; transition: all 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+    transform: translateY(-20px);
+}
+#toast-message.show { opacity: 1; transform: translateY(0); }

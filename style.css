@@ -294,3 +294,36 @@ tr[data-tag="orb"] { border-left: 5px solid #ffc107; }
 .toolbox-item.active:hover {
     background-color: #4b5cae;
 }
+
+
+/* --- 訊息提示框 (Toast) 修正 --- */
+#toast-message {
+    position: fixed;
+    top: 20px;       /* 定位到上方 */
+    right: 20px;     /* 定位到右側 */
+    z-index: 10000;
+    padding: 12px 20px;
+    color: white;
+    /* 背景色由 JS 根據類型 (success/error/info) 動態設定 */
+    border-radius: 12px; 
+    opacity: 0; 
+    visibility: hidden;
+    /* 修正：增加 transform 變動，讓它從右側滑入 */
+    transition: opacity 0.4s ease-in-out, transform 0.4s ease-in-out, visibility 0.4s;
+    font-family: var(--bs-body-font-family);
+    font-size: 0.95rem;
+    font-weight: 500;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+    white-space: nowrap;
+    max-width: 90%; /* 確保在移動裝置上不會超出螢幕 */
+
+    /* 初始狀態：隱藏在右側外面 */
+    transform: translateX(110%);
+}
+
+/* 顯示時的樣式 */
+#toast-message.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0); /* 滑入到定位點 */
+}

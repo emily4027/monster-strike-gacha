@@ -58,9 +58,13 @@
                     </div>
                     <div class="col-md-3" id="account-field-container">
                         <label for="account-select" class="form-label">帳號</label>
-                        <select id="account-select" class="form-select">
-                            <!-- 選項會由 JS 動態載入 -->
-                        </select>
+                        <!-- 修正：將 account-select 和新按鈕包在 input-group 中 -->
+                        <div class="input-group">
+                            <select id="account-select" class="form-select">
+                                <!-- 選項會由 JS 動態載入 -->
+                            </select>
+                            <button type="button" class="btn btn-subtle" id="edit-account-btn" title="新增/編輯帳號"><i class="bi bi-pencil-square"></i></button>
+                        </div>
                         <div id="account-input-group" style="display: none;">
                             <input type="text" id="account-input" class="form-control" placeholder="輸入新帳號名稱">
                             <button type="button" id="cancel-new-account" class="btn btn-link btn-sm p-0 mt-1">取消</button>
@@ -185,11 +189,11 @@
             <a href="https://emily4027.github.io/monster-strike-toolbox/" class="toolbox-item">
                 <i class="bi bi-house-fill"></i> 工具箱首頁
             </a>
-            <a href="https://emily4027.github.io/monster-strike-fruit-assign/" class="toolbox-item">
+            <a href="https://emily4027.github.io/monster-strike-fruit-assign/service_guide.html" class="toolbox-item">
                 <i class="bi bi-apple"></i> 果實分配模擬
             </a>
             <a href="https://emily4027.github.io/monster-strike-gacha/" class="toolbox-item active">
-                <i class="bi bi-bar-chart-line-fill"></i> 抽卡統計
+                <i class="bi bi-bar-chart-line-fill"></i> 抽卡統計 (現行)
             </a>
         </div>
         <!-- 主按鈕 (回工具箱) -->
@@ -204,5 +208,4 @@
     <!-- 引入 JavaScript 檔案 -->
     <script src="script.js" defer></script>
 </body>
-
 </html>

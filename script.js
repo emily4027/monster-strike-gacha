@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let editEventName = null; 
     let isAddingNewAccount = false;
     let isAddingNewEvent = false;
+    // 應要求還原：保留預設的優先帳號清單，用於排序。
     const preferredAccountOrder = ['羽入', '梨花', '沙都子'];
     const sampleData = [];
 
@@ -63,13 +64,21 @@ document.addEventListener('DOMContentLoaded', () => {
             if (event === '--new--') { showToast('請點擊"編輯"按鈕來輸入新活動名稱！', 'error'); return; }
         }
         let account;
+        // 修正：如果是在新增帳號模式，從輸入框取得值
         if (isAddingNewAccount) { account = accountInput.value.trim(); } else { account = accountSelect.value; }
 
         if (!date) { showToast('請選擇日期！', 'error'); return; }
         if (!event || event === '--new--') { showToast('請輸入或選擇有效的活動！', 'error'); return; }
+        
+        // 修正：檢查帳號是否有效
+        if (isAddingNewAccount && !account) { showToast('請輸入新帳號名稱！', 'error'); return; }
         if (!account || account === '--new--') { showToast('請輸入或選擇有效的帳號！', 'error'); return; }
+
         if (account === '--batch--') {} else if (isNaN(pulls) || pulls < 0) { showToast('請輸入有效的抽數！', 'error'); return; }
 
+        // 暫存當前使用的帳號名稱，用於儲存後重新選中
+        const accountUsed = account; 
+        
         if (editMode) {
             if (account === '--batch--') {
                 let updatedCount = 0;
@@ -94,9 +103,20 @@ document.addEventListener('DOMContentLoaded', () => {
             records.push(newRecord);
             showToast('紀錄已儲存！', 'success');
         }
+        
         saveRecords();
+        
+        // 儲存後先重設表單，並重新渲染所有內容（包含新的帳號選項）
         resetFormState();
         renderAll();
+
+        // 修正邏輯：如果不是編輯模式且使用了特定的帳號，選中它
+        if (!editMode && accountUsed && accountUsed !== '--batch--' && accountSelect.querySelector(`option[value="${accountUsed}"]`)) {
+            // 由於 resetFormState 會將 isAddingNewAccount 設為 false
+            showAccountSelectUI(); 
+            accountSelect.value = accountUsed;
+        }
+
     });
 
     function saveRecords() { localStorage.setItem('gachaRecords', JSON.stringify(records)); }
@@ -254,15 +274,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateAccountFormSelect(sortedAccounts, options = { isEditMode: false }) {
-        const currentAccount = accountSelect.value; accountSelect.innerHTML = '';
+        const currentAccount = accountSelect.value;
+        accountSelect.innerHTML = '';
         const fragment = document.createDocumentFragment();
         const defaultOption = document.createElement('option');
-        if (options.isEditMode) { defaultOption.value = '--batch--'; defaultOption.textContent = '-- 全部帳號 (僅編輯) --'; defaultOption.style.color = 'blue'; }
-        else { defaultOption.value = '--new--'; defaultOption.textContent = '-- 新增帳號 --'; defaultOption.style.fontStyle = 'italic'; defaultOption.style.color = '#0d6efd'; }
+        if (options.isEditMode) { 
+            defaultOption.value = '--batch--'; 
+            defaultOption.textContent = '-- 全部帳號 (僅編輯) --'; 
+            defaultOption.style.color = 'blue'; 
+        }
+        else { 
+            defaultOption.value = '--new--'; 
+            defaultOption.textContent = '-- 新增帳號 --'; 
+            defaultOption.style.fontStyle = 'italic'; 
+            defaultOption.style.color = '#0d6efd'; 
+        }
         fragment.appendChild(defaultOption);
         sortedAccounts.forEach(name => { const option = document.createElement('option'); option.value = name; option.textContent = name; fragment.appendChild(option); });
         accountSelect.appendChild(fragment);
-        if (accountSelect.querySelector(`option[value="${currentAccount}"]`)) accountSelect.value = currentAccount;
+        
+        // 修正：在非編輯模式下，嘗試保留當前選定的值 (如果是有效帳號)
+        // 否則預設選中 '--new--'
+        if (accountSelect.querySelector(`option[value="${currentAccount}"]`)) {
+             accountSelect.value = currentAccount;
+        } else if (!options.isEditMode) {
+             accountSelect.value = '--new--';
+        }
+        // 在編輯模式下，如果 currentAccount 是有效帳號但不在 sortedAccounts 裡，
+        // 則保持其值（通常在編輯模式下 currentAccount 應為 '--batch--' 或有效帳號）
     }
 
     tableBody.addEventListener('click', (e) => {
@@ -288,9 +327,21 @@ document.addEventListener('DOMContentLoaded', () => {
     function resetFormState() {
         editMode = false; editEventName = null; form.reset(); tagSelect.value = 'none'; dateInput.valueAsDate = new Date();
         submitBtnText.textContent = '儲存紀錄'; cancelEditBtn.style.display = 'none';
-        togglePullFields(true); showEventSelectUI(); updateEventFormSelect(records); eventSelect.value = '--new--'; isAddingNewEvent = false;
-        handleEventSelectChange(); showAccountSelectUI(); updateAccountFormSelect(getSortedAccountNames(), { isEditMode: false });
-        if (accountSelect.options.length > 0) accountSelect.value = accountSelect.options[0].value;
+        togglePullFields(true); showEventSelectUI(); updateEventFormSelect(records); 
+        eventSelect.value = '--new--'; isAddingNewEvent = false;
+        handleEventSelectChange(); 
+        
+        // 修正：確保在 reset 時，帳號選擇器是可見的下拉選單
+        showAccountSelectUI(); 
+        // 修正：重新整理下拉選單選項
+        updateAccountFormSelect(getSortedAccountNames(), { isEditMode: false });
+        
+        // 修正：將值設為新增
+        accountSelect.value = '--new--'; 
+        
+        // 修正：確保輸入框是清空的
+        accountInput.value = '';
+
     }
 
     function showToast(message, type = 'success') {
@@ -360,16 +411,21 @@ document.addEventListener('DOMContentLoaded', () => {
         globalEditMode = !globalEditMode;
         document.body.classList.toggle('edit-mode-active', globalEditMode);
         gachaFieldset.disabled = !globalEditMode;
-        modeToggleBtn.classList.toggle('btn-outline-primary', !globalEditMode); modeToggleBtn.classList.toggle('btn-primary', globalEditMode);
-        modeToggleBtn.innerHTML = globalEditMode ? '<i class="bi bi-check-circle"></i> 完成編輯' : '<i class="bi bi-eye"></i> 檢視模式';
+        modeToggleBtn.classList.toggle('btn-outline-secondary', !globalEditMode); // 修正：使用 btn-outline-secondary
+        modeToggleBtn.classList.toggle('btn-primary', globalEditMode);
+        modeToggleBtn.innerHTML = globalEditMode ? '<i class="bi bi-check-circle"></i> 完成編輯' : '<i class="bi bi-eye"></i> 檢視模式 (點此編輯)';
         resetFormState(); showToast(globalEditMode ? '已進入編輯模式' : '已退出編輯模式', 'info');
     });
 
     accountFilter.addEventListener('change', renderAll); yearFilter.addEventListener('change', handleYearChange); monthFilter.addEventListener('change', renderAll);
     function handleEventSelectChange() {
         const selectedEventName = eventSelect.value;
-        editEventBtn.style.display = (selectedEventName === '--new--' || !selectedEventName) ? 'block' : 'block';
-        if (selectedEventName !== '--new--') { const m = masterEvents.find(e => e.event === selectedEventName); if (m) { dateInput.value = m.date; tagSelect.value = m.tag; } }
+        // 修正：當選中 --new-- 時，才顯示編輯按鈕
+        editEventBtn.style.display = (selectedEventName === '--new--' || !selectedEventName) ? 'block' : 'none';
+        if (selectedEventName !== '--new--') { 
+            const m = masterEvents.find(e => e.event === selectedEventName); 
+            if (m) { dateInput.value = m.date; tagSelect.value = m.tag; }
+        }
     }
     eventSelect.addEventListener('change', handleEventSelectChange);
     editEventBtn.addEventListener('click', () => eventSelect.value === '--new--' ? enterAddMode() : enterEditMode());
@@ -381,6 +437,16 @@ document.addEventListener('DOMContentLoaded', () => {
     cancelNewAccount.addEventListener('click', () => { showAccountSelectUI(); accountSelect.value = editMode ? '--batch--' : '--new--'; });
     function handleYearChange() { updateMonthFilter(); renderAll(); }
 
-    async function init() { await loadMasterEvents(); loadRecords(); renderAll(); resetFormState(); gachaFieldset.disabled = true; }
+    async function init() { 
+        await loadMasterEvents(); 
+        loadRecords(); 
+        renderAll(); 
+        resetFormState(); 
+        gachaFieldset.disabled = true; 
+        
+        // 修正：確保在初次載入時，模式切換按鈕的文字正確
+        modeToggleBtn.classList.add('btn-outline-secondary');
+        modeToggleBtn.innerHTML = '<i class="bi bi-eye"></i> 檢視模式 (點此編輯)';
+    }
     init();
 });

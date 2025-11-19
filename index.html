@@ -174,6 +174,8 @@
             <div class="p-2">
                 <div class="btn-group w-100 flex-wrap">
                     <button id="export-data" class="btn btn-success custom-btn m-1"><i class="bi bi-download"></i> 匯出備份</button>
+                    <!-- 新增：單獨匯出活動 JSON 按鈕 -->
+                    <button id="export-event-json" class="btn btn-info custom-btn m-1 text-white"><i class="bi bi-card-list"></i> 匯出活動 JSON</button>
                     <button id="import-data" class="btn btn-info custom-btn m-1 text-white"><i class="bi bi-upload"></i> 匯入備份</button>
                     <button id="clear-data" class="btn btn-danger custom-btn m-1"><i class="bi bi-trash3"></i> 清除資料</button>
                 </div>
@@ -189,7 +191,7 @@
             <a href="https://emily4027.github.io/monster-strike-toolbox/" class="toolbox-item">
                 <i class="bi bi-house-fill"></i> 工具箱首頁
             </a>
-            <a href="https://emily4027.github.io/monster-strike-fruit-assign/service_guide.html" class="toolbox-item">
+            <a href="https://emily4027.github.io/monster-strike-fruit-assign/" class="toolbox-item">
                 <i class="bi bi-apple"></i> 果實分配模擬
             </a>
             <a href="https://emily4027.github.io/monster-strike-gacha/" class="toolbox-item active">
@@ -197,9 +199,9 @@
             </a>
         </div>
         <!-- 主按鈕 (回工具箱) -->
-        <a href="https://emily4027.github.io/monster-strike-toolbox/" class="toolbox-main-btn">
+        <button type="button" class="toolbox-main-btn">
             <i class="bi bi-tools"></i> 工具箱
-        </a>
+        </button>
     </div>
 
     <!-- 訊息提示框 -->

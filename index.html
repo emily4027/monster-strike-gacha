@@ -19,11 +19,14 @@
             <div class="icon-badge mx-auto mb-3">📊</div>
             <h1>怪物彈珠抽蛋統計</h1>
             
-            <!-- 新增：雲端狀態指示器 (仿照果實分配工具) -->
+            <!-- 雲端狀態指示器 -->
             <div id="cloudStatus" class="cloud-status" style="display: none;">
                 <span class="status-dot"></span>
                 <span id="cloudStatusText">連線中...</span>
             </div>
+            
+            <!-- [新增] 認證錯誤訊息顯示區 -->
+            <div id="authErrorMsg" style="display: none; color: #b92b27; font-size: 12px; text-align: center; margin-bottom: 10px; padding: 5px; background: #ffe6e6; border-radius: 4px;"></div>
 
             <!-- Google 登入區塊 -->
             <div id="auth-container" class="mt-2">
@@ -209,7 +212,7 @@
             <a href="https://emily4027.github.io/monster-strike-toolbox/" class="toolbox-item">
                 <i class="bi bi-house-fill"></i> 工具箱首頁
             </a>
-            <a href="https://emily4027.github.io/monster-strike-fruit-assign/service_guide.html" class="toolbox-item">
+            <a href="https://emily4027.github.io/monster-strike-fruit-assign/" class="toolbox-item">
                 <i class="bi bi-apple"></i> 果實分配模擬
             </a>
             <a href="https://emily4027.github.io/monster-strike-gacha/" class="toolbox-item active">
@@ -226,9 +229,9 @@
 
     <!-- Firebase SDK -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAjpfcNC4ZniqIxYzgYwp5Cs_8gbbmflVY",
@@ -244,17 +247,46 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
         
-        // 將 Firebase 物件掛載到 window 以便 script.js 使用
+        // 取得環境 App ID
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // 將 Firebase 物件與函式掛載到 window 以便 script.js 使用
+        window.firebaseApp = app;
         window.firebaseAuth = auth;
         window.db = db;
+        window.envAppId = appId; // [關鍵] 暴露 App ID
+        
+        // 掛載函式
         window.GoogleAuthProvider = GoogleAuthProvider;
         window.signInWithPopup = signInWithPopup;
         window.signOut = signOut;
         window.onAuthStateChanged = onAuthStateChanged;
+        window.signInWithCustomToken = signInWithCustomToken; // [關鍵]
         window.doc = doc;
         window.setDoc = setDoc;
         window.getDoc = getDoc;
         window.serverTimestamp = serverTimestamp;
+
+        // [關鍵修正] 僅執行帳號登入 (Custom Token)，不使用匿名備案
+        const initAuth = async () => {
+          const errorDiv = document.getElementById('authErrorMsg');
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            try {
+              await signInWithCustomToken(auth, __initial_auth_token);
+            } catch (e) {
+              console.error("Custom token login failed:", e);
+              // [UI更新] 顯示錯誤訊息給使用者
+              if (errorDiv) {
+                  const errorCode = e.code || "unknown error";
+                  errorDiv.style.display = 'block';
+                  errorDiv.innerHTML = `<strong>❌ 登入失敗：</strong> 雲端連線被拒絕 (${errorCode})<br>請重新登入工具箱主站，或檢查 Firebase 專案設定。`;
+              }
+            }
+          } else {
+             console.log("No auth token provided, remaining offline.");
+          }
+        };
+        initAuth();
     </script>
 
     <!-- 引入 JavaScript 檔案 -->

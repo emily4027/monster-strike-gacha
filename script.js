@@ -97,8 +97,12 @@ document.addEventListener('DOMContentLoaded', () => {
             saveTimeout = setTimeout(async () => {
                 try {
                     const { doc, setDoc, serverTimestamp } = window;
-                    // [修正] 使用符合安全規則的路徑: artifacts/{appId}/users/{uid}/data/gacha_records
-                    const userDocRef = doc(window.db, "artifacts", window.envAppId, "users", currentUser.uid, "data", "gacha_records");
+                    
+                    // [修正] 路徑: artifacts/{appId}/users/{userId}/data/gacha_records
+                    // 確保 window.envAppId 存在，否則使用預設
+                    const appId = window.envAppId || 'default-app-id';
+                    
+                    const userDocRef = doc(window.db, "artifacts", appId, "users", currentUser.uid, "data", "gacha_records");
                     
                     await setDoc(userDocRef, {
                         records: records,
@@ -124,9 +128,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentUser = user;
                 if (user) {
                     // Logged In
+                    // 隱藏手動登入按鈕，因為我們使用環境 token
                     loginBtn.style.display = 'none';
                     userInfoDiv.style.display = 'flex';
-                    userDisplayNameSpan.textContent = user.displayName;
+                    userDisplayNameSpan.textContent = user.displayName || '使用者';
                     if (user.photoURL) userAvatarImg.src = user.photoURL;
                     
                     isCloudMode = true;
@@ -134,22 +139,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     await loadFromCloud();
                 } else {
                     // Logged Out
-                    loginBtn.style.display = 'inline-flex';
+                    // 顯示登入提示或按鈕 (但主要依賴 token 自動登入)
+                    // 如果沒有 token，按鈕也無法運作，這裡僅作狀態顯示
+                    loginBtn.style.display = 'none'; // 隱藏按鈕，因為只有環境 Token 能登入
                     userInfoDiv.style.display = 'none';
                     isCloudMode = false;
-                    updateCloudStatus('offline', '未登入 (離線模式)');
-                }
-            });
-
-            // Login Action
-            loginBtn.addEventListener('click', async () => {
-                const provider = new window.GoogleAuthProvider();
-                try {
-                    await window.signInWithPopup(window.firebaseAuth, provider);
-                    showToast('登入成功！', 'success');
-                } catch (error) {
-                    console.error(error);
-                    showToast(`登入失敗: ${error.message}`, 'error');
+                    updateCloudStatus('offline', '未偵測到帳戶 (離線模式)');
                 }
             });
 
@@ -165,8 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } else {
             console.error("Firebase SDK not loaded.");
-            loginBtn.textContent = "Firebase 錯誤";
-            loginBtn.disabled = true;
+            // loginBtn.textContent = "Firebase 錯誤";
         }
     }, 1000);
 
@@ -174,8 +168,10 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadFromCloud() {
         try {
             const { doc, getDoc } = window;
-            // [修正] 使用符合安全規則的路徑: artifacts/{appId}/users/{uid}/data/gacha_records
-            const userDocRef = doc(window.db, "artifacts", window.envAppId, "users", currentUser.uid, "data", "gacha_records");
+            const appId = window.envAppId || 'default-app-id';
+            
+            // [修正] 路徑: artifacts/{appId}/users/{userId}/data/gacha_records
+            const userDocRef = doc(window.db, "artifacts", appId, "users", currentUser.uid, "data", "gacha_records");
             const docSnap = await getDoc(userDocRef);
 
             if (docSnap.exists()) {
@@ -201,7 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error("[CLOUD] Load failed:", error);
             updateCloudStatus('offline', '雲端載入失敗');
-            showToast('無法載入雲端資料，請檢查權限。', 'error');
+            showToast('無法載入雲端資料，請檢查權限或網路。', 'error');
         }
     }
 
@@ -349,7 +345,6 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('紀錄已儲存！', 'success');
         }
         
-        // REPLACE saveRecords() with saveData() for cloud sync
         saveData();
         resetFormState();
         renderAll();
@@ -360,8 +355,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Updated: Use saveData() internally if needed, but usually triggered by actions
-    // Legacy function for initial load only
     function loadRecords() {
         const data = localStorage.getItem('gachaRecords');
         if (data && JSON.parse(data).length > 0) { records = JSON.parse(data); } else { records = sampleData; saveData(); }
@@ -571,22 +564,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const editButton = e.target.closest('.btn-warning');
         if (deleteButton) {
             const idToDelete = parseInt(deleteButton.getAttribute('data-id'), 10);
-            if (confirm('確定要刪除這筆紀錄嗎？')) { 
-                records = records.filter(record => record.id !== idToDelete); 
-                saveData(); // Updated to auto-save
-                renderAll(); 
-                resetFormState(); 
-                showToast('紀錄已刪除', 'success'); 
-            }
+            if (confirm('確定要刪除這筆紀錄嗎？')) { records = records.filter(record => record.id !== idToDelete); saveData(); renderAll(); resetFormState(); showToast('紀錄已刪除', 'success'); }
         } else if (editButton) {
             const idToEdit = parseInt(editButton.getAttribute('data-id'), 10);
             const recordToEdit = records.find(r => r.id === idToEdit);
             if (recordToEdit) {
                 if (!globalEditMode) { showToast('請先點擊右下角的 "進入編輯模式"', 'info'); return; }
-                showAccountSelectUI(); eventSelect.value = recordToEdit.event; 
-                enterEditMode();
-                accountSelect.value = recordToEdit.account; 
-                loadRecordForEdit(recordToEdit.account); 
+                showAccountSelectUI(); eventSelect.value = recordToEdit.event; enterEditMode();
+                accountSelect.value = recordToEdit.account; loadRecordForEdit(recordToEdit.account);
                 window.scrollTo({ top: 0, behavior: 'smooth' }); showToast('請在上方表單編輯', 'info');
             }
         }
@@ -635,46 +620,13 @@ document.addEventListener('DOMContentLoaded', () => {
         else { pullsInput.classList.add('field-disabled'); notesInput.classList.add('field-disabled'); pullsInput.value = ''; notesInput.value = ''; }
     }
 
-    clearButton.addEventListener('click', () => { 
-        if (confirm('警告：這將刪除所有儲存的抽卡紀錄！確定嗎？')) { 
-            records = []; 
-            saveData(); // Auto-save
-            renderAll(); 
-            resetFormState(); 
-            showToast('所有資料已初始化', 'error'); 
-        } 
-    });
+    clearButton.addEventListener('click', () => { if (confirm('警告：這將刪除所有儲存的抽卡紀錄！確定嗎？')) { records = []; saveData(); renderAll(); resetFormState(); showToast('所有資料已清除', 'error'); } });
     exportButton.addEventListener('click', () => {
         if (records.length === 0) { showToast('目前沒有資料可匯出', 'info'); return; }
         const blob = new Blob([JSON.stringify(records, null, 2)], { type: 'application/json' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `gacha_records_${new Date().toISOString().split('T')[0]}.json`;
         a.click(); showToast('資料已匯出！', 'success');
     });
-
-    // Export Event JSON (Admin only)
-    exportEventJsonButton.addEventListener('click', () => {
-        const selectedEventName = eventSelect.value;
-        if (!selectedEventName || selectedEventName === '--new--') {
-            showToast('請先選擇一個有效的活動！', 'error');
-            return;
-        }
-        const eventToExport = masterEvents.find(e => e.event === selectedEventName);
-        const dateValue = dateInput.value;
-        const tagValue = tagSelect.value;
-        const exportData = {
-            event: selectedEventName,
-            date: eventToExport ? eventToExport.date : dateValue, 
-            tag: eventToExport ? eventToExport.tag : (tagValue !== 'none' ? tagValue : '') 
-        };
-        const blob = new Blob([JSON.stringify([exportData], null, 2)], { type: 'application/json' });
-        const eventShortName = selectedEventName.substring(0, 20).replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
-        const fileName = `event_${eventShortName}_template.json`;
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fileName;
-        a.click();
-        showToast(`已匯出活動模板：${selectedEventName}`, 'info');
-    });
-    
-    // Import Data Button (Unified: Data JSON OR Admin Key)
     importButton.addEventListener('click', () => importFileInput.click());
     importFileInput.addEventListener('change', (e) => {
         const file = e.target.files[0]; if (!file) return;
@@ -682,19 +634,15 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.onload = (event) => {
             try {
                 const jsonData = JSON.parse(event.target.result);
-                
-                // Check for Admin Key
                 if (jsonData.enableAdmin === true) {
                     document.body.classList.add('is-admin');
                     adminBadge.style.display = 'inline-block';
                     showToast('管理員模式已啟用！', 'success');
-                    return; // Stop loading as data
+                    return; 
                 }
-
-                // Normal Data Load
                 if (Array.isArray(jsonData)) { 
                     records = jsonData; 
-                    saveData(); // Auto-save imported data
+                    saveData(); 
                     renderAll(); 
                     showToast('資料已成功載入！', 'success'); 
                 } else { 
@@ -754,7 +702,7 @@ document.addEventListener('DOMContentLoaded', () => {
         globalEditMode = !globalEditMode;
         document.body.classList.toggle('edit-mode-active', globalEditMode);
         gachaFieldset.disabled = !globalEditMode;
-        modeToggleBtn.classList.toggle('btn-outline-secondary', !globalEditMode); 
+        modeToggleBtn.classList.toggle('btn-outline-secondary', !globalEditMode); // 修正：使用 btn-outline-secondary
         modeToggleBtn.classList.toggle('btn-primary', globalEditMode);
         modeToggleBtn.innerHTML = globalEditMode ? '<i class="bi bi-check-circle"></i> 完成編輯' : '<i class="bi bi-eye"></i> 檢視模式 (點此編輯)';
         resetFormState(); showToast(globalEditMode ? '已進入編輯模式' : '已退出編輯模式', 'info');
@@ -763,6 +711,7 @@ document.addEventListener('DOMContentLoaded', () => {
     accountFilter.addEventListener('change', renderAll); yearFilter.addEventListener('change', handleYearChange); monthFilter.addEventListener('change', renderAll);
     function handleEventSelectChange() {
         const selectedEventName = eventSelect.value;
+        // 修正：當選中 --new-- 時，才顯示編輯按鈕
         editEventBtn.style.display = (selectedEventName === '--new--' || !selectedEventName) ? 'block' : 'none';
         if (selectedEventName !== '--new--') { 
             const m = masterEvents.find(e => e.event === selectedEventName); 
@@ -773,14 +722,17 @@ document.addEventListener('DOMContentLoaded', () => {
     editEventBtn.addEventListener('click', () => eventSelect.value === '--new--' ? enterAddMode() : enterEditMode());
     cancelNewEvent.addEventListener('click', resetFormState);
     
+    // 修正：移除 accountSelect 的 change 事件，改由新按鈕處理，並在 select 改變時更新按鈕狀態
     accountSelect.addEventListener('change', () => {
         updateAccountEditBtnState();
     });
     
+    // 新增：處理帳號編輯按鈕的點擊事件
     editAccountBtn.addEventListener('click', enterAccountEditMode);
     
     cancelNewAccount.addEventListener('click', () => { 
         showAccountSelectUI(); 
+        // 修正：回到新增模式下的 --new-- 選項
         accountSelect.value = '--new--'; 
     });
     function handleYearChange() { updateMonthFilter(); renderAll(); }
@@ -792,10 +744,11 @@ document.addEventListener('DOMContentLoaded', () => {
         resetFormState(); 
         gachaFieldset.disabled = true; 
         
+        // 修正：確保在初次載入時，模式切換按鈕的文字正確
         modeToggleBtn.classList.add('btn-outline-secondary');
         modeToggleBtn.innerHTML = '<i class="bi bi-eye"></i> 檢視模式 (點此編輯)';
 
-        updateAccountEditBtnState(); 
+        updateAccountEditBtnState(); // 初始化帳號編輯按鈕狀態
     }
     init();
 });

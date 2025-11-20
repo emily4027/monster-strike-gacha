@@ -675,11 +675,30 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('目前沒有活動資料可匯出！', 'error');
             return;
         }
-        const blob = new Blob([JSON.stringify(masterEvents, null, 2)], { type: 'application/json' });
+        
+        // [修改] 智慧補全標籤：建立一個新的清單，嘗試從 records 中補回缺失的 tag
+        const enrichedEvents = masterEvents.map(evt => {
+            let newEvt = { ...evt }; // 複製物件，避免汙染原始資料
+            
+            // 如果活動清單中沒有標籤，嘗試去紀錄裡找找看
+            if (!newEvt.tag) {
+                const record = records.find(r => r.event === newEvt.event && r.tag);
+                if (record) newEvt.tag = record.tag;
+            }
+            
+            // 如果活動清單中沒有日期（雖然少見），也嘗試去紀錄裡找
+            if (!newEvt.date) {
+                const record = records.find(r => r.event === newEvt.event && r.date);
+                if (record) newEvt.date = record.date;
+            }
+            return newEvt;
+        });
+        
+        const blob = new Blob([JSON.stringify(enrichedEvents, null, 2)], { type: 'application/json' });
         const fileName = `events_list_${new Date().toISOString().split('T')[0]}.json`;
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fileName;
         a.click();
-        showToast(`已匯出完整活動清單！(共 ${masterEvents.length} 筆)`, 'success');
+        showToast(`已匯出並補全完整活動清單！(共 ${enrichedEvents.length} 筆)`, 'success');
     });
 
     function enterAddMode() {
@@ -743,7 +762,20 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (selectedEventName !== '--new--') { 
             const m = masterEvents.find(e => e.event === selectedEventName); 
-            if (m) { dateInput.value = m.date; tagSelect.value = m.tag; }
+            
+            // [修改] 優先使用 masterEvents 的資料，若無 tag 則嘗試從 records 找
+            let dateToUse = m ? m.date : '';
+            let tagToUse = m ? m.tag : '';
+
+            // 如果官方清單沒標籤，嘗試去歷史紀錄找找看
+            if (!tagToUse) {
+                const recordWithTag = records.find(r => r.event === selectedEventName && r.tag);
+                if (recordWithTag) tagToUse = recordWithTag.tag;
+            }
+            
+            // 填入表單
+            if (dateToUse) dateInput.value = dateToUse;
+            if (tagToUse) tagSelect.value = tagToUse;
         }
     }
     

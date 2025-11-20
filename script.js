@@ -29,8 +29,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const historyTableTitle = document.getElementById('history-table-title');
     const clearButton = document.getElementById('clear-data');
     const exportButton = document.getElementById('export-data');
+    // 新增：匯出單一活動 JSON 按鈕
+    const exportEventJsonButton = document.getElementById('export-event-json');
     const importButton = document.getElementById('import-data');
     const importFileInput = document.getElementById('import-file-input');
+    
+    // 新增：同步與匯入活動清單的元素
+    const syncRemoteEventsBtn = document.getElementById('sync-remote-events');
+    const importEventsFileBtn = document.getElementById('import-events-file-btn');
+    const importEventsFileInput = document.getElementById('import-events-file-input');
+
+    // 遠端活動清單 URL (使用用戶提供的連結)
+    const REMOTE_EVENTS_URL = 'https://emily4027.github.io/monster-strike-gacha/events.json';
 
     let records = [];
     let masterEvents = []; 
@@ -58,18 +68,114 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     // ----------------------------------------
 
-    async function loadMasterEvents() {
+    // 新增：合併新活動到本地 masterEvents 的邏輯
+    function mergeNewEvents(newEvents) {
+        if (!Array.isArray(newEvents)) {
+            showToast("合併失敗：輸入的活動列表格式不正確。", 'error');
+            return 0;
+        }
+
+        const existingEventsSet = new Set(masterEvents.map(e => e.event));
+        let newEventsAdded = 0;
+        
+        newEvents.forEach(newEvent => {
+            // 只有在事件名稱是唯一且非空時才添加
+            if (newEvent.event && !existingEventsSet.has(newEvent.event)) {
+                masterEvents.push(newEvent);
+                existingEventsSet.add(newEvent.event); // 更新集合
+                newEventsAdded++;
+            }
+        });
+
+        // 重新對 masterEvents 進行排序
+        masterEvents.sort((a, b) => {
+            const dateA = extractEventDate(a.event);
+            const dateB = extractEventDate(b.event);
+
+            // Case 1: 兩者都有日期 (最新日期在前)
+            if (dateA && dateB) {
+                return dateB.localeCompare(dateA); 
+            }
+            // Case 2: A 有日期，B 無日期 (A 在前)
+            if (dateA && !dateB) {
+                return -1;
+            }
+            // Case 3: B 有日期，A 無日期 (B 在前)
+            if (!dateA && dateB) {
+                return 1;
+            }
+            // Case 4: 兩者皆無日期 (用 event 名稱升序排序)
+            return a.event.localeCompare(b.event);
+        });
+
+        updateEventFormSelect(records); 
+        return newEventsAdded;
+    }
+
+
+    // 修正：初始載入只負責載入本地 events.json
+    async function fetchInitialEvents() {
         try {
             const response = await fetch('events.json');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
             if (Array.isArray(data)) {
+                // 初始載入時直接覆蓋 masterEvents
                 masterEvents = data;
                 updateEventFormSelect(records); 
+            } else {
+                 throw new Error("載入的資料格式不正確，非有效的 JSON 陣列。");
             }
-        } catch (error) { console.warn('無法載入 events.json:', error); }
+        } catch (error) { 
+            console.warn('無法載入 events.json:', error);
+            showToast('初始載入活動清單失敗，請嘗試手動匯入或同步遠端清單。', 'error');
+        }
     }
 
+    // 新增：處理遠端同步活動清單 (合併邏輯)
+    syncRemoteEventsBtn.addEventListener('click', async () => {
+        if (!confirm('確定要從遠端同步活動清單嗎？遠端新增的活動將與本地清單合併。')) return;
+
+        showToast('正在從遠端同步活動清單...', 'info');
+        try {
+            const response = await fetch(REMOTE_EVENTS_URL);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const newEvents = await response.json();
+            const addedCount = mergeNewEvents(newEvents);
+            showToast(`活動清單已同步完成！新增了 ${addedCount} 筆活動。`, 'success');
+        } catch (error) {
+            console.error('遠端同步失敗:', error);
+            showToast('遠端同步活動清單失敗，請檢查網路或 URL。', 'error');
+        }
+    });
+
+    // 新增：處理匯入活動清單檔案 (合併邏輯)
+    importEventsFileBtn.addEventListener('click', () => {
+        importEventsFileInput.click();
+    });
+
+    // 處理匯入活動清單檔案的變更事件
+    importEventsFileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const importedData = JSON.parse(event.target.result);
+                if (Array.isArray(importedData)) {
+                    const addedCount = mergeNewEvents(importedData);
+                    showToast(`活動清單檔案已成功匯入！新增了 ${addedCount} 筆活動。`, 'success');
+                } else {
+                    throw new Error('檔案格式錯誤，不是有效的活動 JSON 陣列。');
+                }
+            } catch (err) {
+                showToast(`匯入失敗：${err.message}`, 'error');
+            } finally {
+                importEventsFileInput.value = null; 
+            }
+        };
+        reader.readAsText(file);
+    });
+    
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         if (!globalEditMode) { showToast('請先點擊右下角的 "進入編輯模式"', 'info'); return; }
@@ -447,6 +553,37 @@ document.addEventListener('DOMContentLoaded', () => {
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `gacha_records_${new Date().toISOString().split('T')[0]}.json`;
         a.click(); showToast('資料已匯出！', 'success');
     });
+
+    // 匯出單一活動 JSON 功能：用於生成單個活動的模板
+    exportEventJsonButton.addEventListener('click', () => {
+        const selectedEventName = eventSelect.value;
+        
+        if (!selectedEventName || selectedEventName === '--new--') {
+            showToast('請先選擇一個有效的活動！', 'error');
+            return;
+        }
+
+        const eventToExport = masterEvents.find(e => e.event === selectedEventName);
+        const dateValue = dateInput.value;
+        const tagValue = tagSelect.value;
+
+        // 匯出當前表單或 masterEvents 中的活動資訊作為模板
+        const exportData = {
+            event: selectedEventName,
+            date: eventToExport ? eventToExport.date : dateValue, // 優先使用 masterEvents 的日期
+            tag: eventToExport ? eventToExport.tag : (tagValue !== 'none' ? tagValue : '') // 優先使用 masterEvents 的標籤
+        };
+        
+        // 創建一個只包含單一活動物件的 JSON 陣列
+        const blob = new Blob([JSON.stringify([exportData], null, 2)], { type: 'application/json' });
+        const eventShortName = selectedEventName.substring(0, 20).replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+        const fileName = `event_${eventShortName}_template.json`;
+
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fileName;
+        a.click();
+        showToast(`已匯出活動模板：${selectedEventName}`, 'info');
+    });
+    
     importButton.addEventListener('click', () => { if (confirm('警告：匯入將覆蓋目前紀錄！')) importFileInput.click(); });
     importFileInput.addEventListener('change', (e) => {
         const file = e.target.files[0]; if (!file) return;
@@ -547,7 +684,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleYearChange() { updateMonthFilter(); renderAll(); }
 
     async function init() { 
-        await loadMasterEvents(); 
+        await fetchInitialEvents(); // 修正：使用新的初始載入函式
         loadRecords(); 
         renderAll(); 
         resetFormState(); 

@@ -97,17 +97,19 @@ document.addEventListener('DOMContentLoaded', () => {
             saveTimeout = setTimeout(async () => {
                 try {
                     const { doc, setDoc, serverTimestamp } = window;
-                    const userDocRef = doc(window.db, "users", currentUser.uid, "apps", "gacha_tracker");
+                    // [修正] 使用符合安全規則的路徑: artifacts/{appId}/users/{uid}/data/gacha_records
+                    const userDocRef = doc(window.db, "artifacts", window.envAppId, "users", currentUser.uid, "data", "gacha_records");
+                    
                     await setDoc(userDocRef, {
                         records: records,
                         lastUpdated: serverTimestamp()
-                    }, { merge: true }); // Use merge to avoid overwriting other fields if any
+                    }, { merge: true }); 
                     
                     updateCloudStatus('online', '雲端就緒 (已同步)');
                     console.log('[CLOUD] Auto-saved successfully.');
                 } catch (error) {
                     console.error('[CLOUD] Auto-save failed:', error);
-                    updateCloudStatus('offline', '儲存失敗 (離線)');
+                    updateCloudStatus('offline', '儲存失敗 (權限不足)');
                 }
             }, 1500); // 1.5s debounce
         } else if (!isCloudMode) {
@@ -156,7 +158,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     await window.signOut(window.firebaseAuth);
                     showToast('已登出', 'info');
-                    // Optional: Clear records on logout? Currently keeping them in view.
                 } catch (error) {
                     console.error(error);
                 }
@@ -173,7 +174,8 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadFromCloud() {
         try {
             const { doc, getDoc } = window;
-            const userDocRef = doc(window.db, "users", currentUser.uid, "apps", "gacha_tracker");
+            // [修正] 使用符合安全規則的路徑: artifacts/{appId}/users/{uid}/data/gacha_records
+            const userDocRef = doc(window.db, "artifacts", window.envAppId, "users", currentUser.uid, "data", "gacha_records");
             const docSnap = await getDoc(userDocRef);
 
             if (docSnap.exists()) {
@@ -199,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error("[CLOUD] Load failed:", error);
             updateCloudStatus('offline', '雲端載入失敗');
-            showToast('無法載入雲端資料，使用本地備份。', 'error');
+            showToast('無法載入雲端資料，請檢查權限。', 'error');
         }
     }
 

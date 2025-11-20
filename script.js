@@ -14,9 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const accountInputGroup = document.getElementById('account-input-group');
     const accountInput = document.getElementById('account-input');
     const cancelNewAccount = document.getElementById('cancel-new-account');
-    // 新增：帳號編輯按鈕
     const editAccountBtn = document.getElementById('edit-account-btn'); 
-    // 新增：帳號選擇器的 input-group 容器
     const accountSelectGroup = accountSelect.closest('.input-group'); 
     const dateInput = document.getElementById('date');
     const pullsInput = document.getElementById('pulls');
@@ -27,19 +25,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const yearFilter = document.getElementById('year-filter');
     const monthFilter = document.getElementById('month-filter');
     const historyTableTitle = document.getElementById('history-table-title');
+    
+    // Data Management Buttons
     const clearButton = document.getElementById('clear-data');
     const exportButton = document.getElementById('export-data');
-    // 新增：匯出單一活動 JSON 按鈕
-    const exportEventJsonButton = document.getElementById('export-event-json');
     const importButton = document.getElementById('import-data');
     const importFileInput = document.getElementById('import-file-input');
-    
-    // 新增：同步與匯入活動清單的元素
     const syncRemoteEventsBtn = document.getElementById('sync-remote-events');
+    
+    // Admin Mode Elements
+    const exportEventJsonButton = document.getElementById('export-event-json');
     const importEventsFileBtn = document.getElementById('import-events-file-btn');
     const importEventsFileInput = document.getElementById('import-events-file-input');
+    const adminBadge = document.getElementById('admin-badge');
+    
+    // Firebase Cloud Elements
+    const loginBtn = document.getElementById('google-login-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const userInfoDiv = document.getElementById('user-info');
+    const userDisplayNameSpan = document.getElementById('user-display-name');
+    const userAvatarImg = document.getElementById('user-avatar');
+    
+    // Cloud Status Indicators
+    const cloudStatus = document.getElementById('cloudStatus');
+    const cloudStatusText = document.getElementById('cloudStatusText');
+    const statusDot = document.querySelector('.status-dot');
 
-    // 遠端活動清單 URL (使用用戶提供的連結)
     const REMOTE_EVENTS_URL = 'https://emily4027.github.io/monster-strike-gacha/events.json';
 
     let records = [];
@@ -49,112 +60,224 @@ document.addEventListener('DOMContentLoaded', () => {
     let editEventName = null; 
     let isAddingNewAccount = false;
     let isAddingNewEvent = false;
-    // 應要求還原：保留預設的優先帳號清單，用於排序。
+    
+    // Cloud State
+    let currentUser = null; 
+    let isCloudMode = false;
+    let saveTimeout = null; // For debounce
+
     const preferredAccountOrder = ['羽入', '梨花', '沙都子'];
     const sampleData = [];
 
-    // --- 新增：活動名稱日期提取工具函式 ---
+    // --- Cloud Status Helper ---
+    function updateCloudStatus(status, msg) {
+        cloudStatus.style.display = 'flex';
+        cloudStatusText.textContent = msg;
+        statusDot.className = 'status-dot'; // reset
+        
+        if (status === 'online') {
+            statusDot.classList.add('status-online');
+        } else if (status === 'saving') {
+            statusDot.classList.add('status-saving');
+        } else {
+            statusDot.classList.add('status-offline');
+        }
+    }
+
+    // --- Unified Save Function (Local + Cloud Auto-Save) ---
+    function saveData() {
+        // 1. Always save to LocalStorage immediately
+        localStorage.setItem('gachaRecords', JSON.stringify(records));
+
+        // 2. If Cloud Mode, Debounce Save to Firestore
+        if (isCloudMode && currentUser) {
+            updateCloudStatus('saving', '儲存中...');
+            clearTimeout(saveTimeout);
+            
+            saveTimeout = setTimeout(async () => {
+                try {
+                    const { doc, setDoc, serverTimestamp } = window;
+                    const userDocRef = doc(window.db, "users", currentUser.uid, "apps", "gacha_tracker");
+                    await setDoc(userDocRef, {
+                        records: records,
+                        lastUpdated: serverTimestamp()
+                    }, { merge: true }); // Use merge to avoid overwriting other fields if any
+                    
+                    updateCloudStatus('online', '雲端就緒 (已同步)');
+                    console.log('[CLOUD] Auto-saved successfully.');
+                } catch (error) {
+                    console.error('[CLOUD] Auto-save failed:', error);
+                    updateCloudStatus('offline', '儲存失敗 (離線)');
+                }
+            }, 1500); // 1.5s debounce
+        } else if (!isCloudMode) {
+             updateCloudStatus('offline', '離線模式 (已存本地)');
+        }
+    }
+
+    // --- Firebase Auth & Initialization ---
+    setTimeout(() => {
+        if (window.firebaseAuth) {
+            window.onAuthStateChanged(window.firebaseAuth, async (user) => {
+                currentUser = user;
+                if (user) {
+                    // Logged In
+                    loginBtn.style.display = 'none';
+                    userInfoDiv.style.display = 'flex';
+                    userDisplayNameSpan.textContent = user.displayName;
+                    if (user.photoURL) userAvatarImg.src = user.photoURL;
+                    
+                    isCloudMode = true;
+                    updateCloudStatus('saving', '正在從雲端載入...');
+                    await loadFromCloud();
+                } else {
+                    // Logged Out
+                    loginBtn.style.display = 'inline-flex';
+                    userInfoDiv.style.display = 'none';
+                    isCloudMode = false;
+                    updateCloudStatus('offline', '未登入 (離線模式)');
+                }
+            });
+
+            // Login Action
+            loginBtn.addEventListener('click', async () => {
+                const provider = new window.GoogleAuthProvider();
+                try {
+                    await window.signInWithPopup(window.firebaseAuth, provider);
+                    showToast('登入成功！', 'success');
+                } catch (error) {
+                    console.error(error);
+                    showToast(`登入失敗: ${error.message}`, 'error');
+                }
+            });
+
+            // Logout Action
+            logoutBtn.addEventListener('click', async () => {
+                try {
+                    await window.signOut(window.firebaseAuth);
+                    showToast('已登出', 'info');
+                    // Optional: Clear records on logout? Currently keeping them in view.
+                } catch (error) {
+                    console.error(error);
+                }
+            });
+
+        } else {
+            console.error("Firebase SDK not loaded.");
+            loginBtn.textContent = "Firebase 錯誤";
+            loginBtn.disabled = true;
+        }
+    }, 1000);
+
+    // --- Cloud Load Logic ---
+    async function loadFromCloud() {
+        try {
+            const { doc, getDoc } = window;
+            const userDocRef = doc(window.db, "users", currentUser.uid, "apps", "gacha_tracker");
+            const docSnap = await getDoc(userDocRef);
+
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                if (data.records && Array.isArray(data.records)) {
+                    records = data.records;
+                    // Update local storage to match cloud
+                    localStorage.setItem('gachaRecords', JSON.stringify(records));
+                    renderAll();
+                    resetFormState();
+                    updateCloudStatus('online', '雲端就緒 (已載入)');
+                    showToast('已載入雲端紀錄', 'success');
+                }
+            } else {
+                // No cloud data, try to sync local data to cloud
+                if (records.length > 0) {
+                    saveData(); // Trigger auto-save to upload local data
+                    showToast('已將本地紀錄同步至雲端', 'info');
+                } else {
+                    updateCloudStatus('online', '雲端就緒 (尚無資料)');
+                }
+            }
+        } catch (error) {
+            console.error("[CLOUD] Load failed:", error);
+            updateCloudStatus('offline', '雲端載入失敗');
+            showToast('無法載入雲端資料，使用本地備份。', 'error');
+        }
+    }
+
+    // --- Utility Functions ---
     function extractEventDate(eventName) {
-        // 嘗試匹配 YYYY-MM, YYYY/MM, YYYY年MM月 等日期前綴
-        // 注意：只匹配開頭的日期格式。例如: 2025-11月
         const match = eventName.match(/^(\d{4})[-\/]?(\d{1,2})/);
         if (match) {
             const year = match[1];
-            // 補零確保月份是兩位數
             const month = match[2].padStart(2, '0'); 
-            return `${year}-${month}`; // 格式化為 YYYY-MM
+            return `${year}-${month}`; 
         }
         return null;
     }
-    // ----------------------------------------
 
-    // 新增：合併新活動到本地 masterEvents 的邏輯
     function mergeNewEvents(newEvents) {
         if (!Array.isArray(newEvents)) {
             showToast("合併失敗：輸入的活動列表格式不正確。", 'error');
             return 0;
         }
-
         const existingEventsSet = new Set(masterEvents.map(e => e.event));
         let newEventsAdded = 0;
-        
         newEvents.forEach(newEvent => {
-            // 只有在事件名稱是唯一且非空時才添加
             if (newEvent.event && !existingEventsSet.has(newEvent.event)) {
                 masterEvents.push(newEvent);
-                existingEventsSet.add(newEvent.event); // 更新集合
+                existingEventsSet.add(newEvent.event); 
                 newEventsAdded++;
             }
         });
-
-        // 重新對 masterEvents 進行排序
         masterEvents.sort((a, b) => {
             const dateA = extractEventDate(a.event);
             const dateB = extractEventDate(b.event);
-
-            // Case 1: 兩者都有日期 (最新日期在前)
-            if (dateA && dateB) {
-                return dateB.localeCompare(dateA); 
-            }
-            // Case 2: A 有日期，B 無日期 (A 在前)
-            if (dateA && !dateB) {
-                return -1;
-            }
-            // Case 3: B 有日期，A 無日期 (B 在前)
-            if (!dateA && dateB) {
-                return 1;
-            }
-            // Case 4: 兩者皆無日期 (用 event 名稱升序排序)
+            if (dateA && dateB) return dateB.localeCompare(dateA); 
+            if (dateA && !dateB) return -1;
+            if (!dateA && dateB) return 1;
             return a.event.localeCompare(b.event);
         });
-
         updateEventFormSelect(records); 
         return newEventsAdded;
     }
 
-
-    // 修正：初始載入只負責載入本地 events.json
-    async function fetchInitialEvents() {
+    async function loadMasterEvents(sourceUrl = 'events.json') {
         try {
-            const response = await fetch('events.json');
+            const response = await fetch(sourceUrl);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
             if (Array.isArray(data)) {
-                // 初始載入時直接覆蓋 masterEvents
                 masterEvents = data;
-                updateEventFormSelect(records); 
+                updateEventFormSelect(records);
+                if (sourceUrl !== 'events.json') {
+                     showToast(`活動清單已成功同步！`, 'success');
+                }
             } else {
-                 throw new Error("載入的資料格式不正確，非有效的 JSON 陣列。");
+                 throw new Error("載入的資料格式不正確");
             }
         } catch (error) { 
-            console.warn('無法載入 events.json:', error);
-            showToast('初始載入活動清單失敗，請嘗試手動匯入或同步遠端清單。', 'error');
+            console.warn(`無法載入活動清單 (${sourceUrl}):`, error);
         }
     }
 
-    // 新增：處理遠端同步活動清單 (合併邏輯)
+    // --- Event Listeners ---
+
+    // Sync Remote Events
     syncRemoteEventsBtn.addEventListener('click', async () => {
         if (!confirm('確定要從遠端同步活動清單嗎？遠端新增的活動將與本地清單合併。')) return;
-
-        showToast('正在從遠端同步活動清單...', 'info');
+        showToast('正在同步...', 'info');
         try {
             const response = await fetch(REMOTE_EVENTS_URL);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            if (!response.ok) throw new Error(`HTTP error!`);
             const newEvents = await response.json();
             const addedCount = mergeNewEvents(newEvents);
-            showToast(`活動清單已同步完成！新增了 ${addedCount} 筆活動。`, 'success');
+            showToast(`同步完成！新增 ${addedCount} 筆活動。`, 'success');
         } catch (error) {
-            console.error('遠端同步失敗:', error);
-            showToast('遠端同步活動清單失敗，請檢查網路或 URL。', 'error');
+            showToast('同步失敗，請檢查網路。', 'error');
         }
     });
 
-    // 新增：處理匯入活動清單檔案 (合併邏輯)
-    importEventsFileBtn.addEventListener('click', () => {
-        importEventsFileInput.click();
-    });
-
-    // 處理匯入活動清單檔案的變更事件
+    // Import Events File (Admin)
+    importEventsFileBtn.addEventListener('click', () => importEventsFileInput.click());
     importEventsFileInput.addEventListener('change', (e) => {
         const file = e.target.files[0]; if (!file) return;
         const reader = new FileReader();
@@ -163,9 +286,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const importedData = JSON.parse(event.target.result);
                 if (Array.isArray(importedData)) {
                     const addedCount = mergeNewEvents(importedData);
-                    showToast(`活動清單檔案已成功匯入！新增了 ${addedCount} 筆活動。`, 'success');
+                    showToast(`匯入成功！新增 ${addedCount} 筆活動。`, 'success');
                 } else {
-                    throw new Error('檔案格式錯誤，不是有效的活動 JSON 陣列。');
+                    throw new Error('格式錯誤');
                 }
             } catch (err) {
                 showToast(`匯入失敗：${err.message}`, 'error');
@@ -175,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         reader.readAsText(file);
     });
-    
+
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         if (!globalEditMode) { showToast('請先點擊右下角的 "進入編輯模式"', 'info'); return; }
@@ -189,19 +312,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (event === '--new--') { showToast('請點擊"編輯"按鈕來輸入新活動名稱！', 'error'); return; }
         }
         let account;
-        // 修正：如果是在新增帳號模式，從輸入框取得值
         if (isAddingNewAccount) { account = accountInput.value.trim(); } else { account = accountSelect.value; }
 
         if (!date) { showToast('請選擇日期！', 'error'); return; }
         if (!event || event === '--new--') { showToast('請輸入或選擇有效的活動！', 'error'); return; }
-        
-        // 修正：檢查帳號是否有效
         if (isAddingNewAccount && !account) { showToast('請輸入新帳號名稱！', 'error'); return; }
         if (!account || account === '--new--') { showToast('請輸入或選擇有效的帳號！', 'error'); return; }
-
         if (account === '--batch--') {} else if (isNaN(pulls) || pulls < 0) { showToast('請輸入有效的抽數！', 'error'); return; }
 
-        // 暫存當前使用的帳號名稱，用於儲存後重新選中
         const accountUsed = account; 
         
         if (editMode) {
@@ -229,25 +347,22 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('紀錄已儲存！', 'success');
         }
         
-        saveRecords();
-        
-        // 儲存後先重設表單，並重新渲染所有內容（包含新的帳號選項）
+        // REPLACE saveRecords() with saveData() for cloud sync
+        saveData();
         resetFormState();
         renderAll();
 
-        // 修正邏輯：如果不是編輯模式且使用了特定的帳號，選中它
         if (!editMode && accountUsed && accountUsed !== '--batch--' && accountSelect.querySelector(`option[value="${accountUsed}"]`)) {
-            // 由於 resetFormState 會將 isAddingNewAccount 設為 false
             showAccountSelectUI(); 
             accountSelect.value = accountUsed;
         }
-
     });
 
-    function saveRecords() { localStorage.setItem('gachaRecords', JSON.stringify(records)); }
+    // Updated: Use saveData() internally if needed, but usually triggered by actions
+    // Legacy function for initial load only
     function loadRecords() {
         const data = localStorage.getItem('gachaRecords');
-        if (data && JSON.parse(data).length > 0) { records = JSON.parse(data); } else { records = sampleData; saveRecords(); }
+        if (data && JSON.parse(data).length > 0) { records = JSON.parse(data); } else { records = sampleData; saveData(); }
     }
 
     function renderAll() {
@@ -271,8 +386,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!editMode) updateAccountFormSelect(sortedAccounts); 
         updateYearFilter();
         updateMonthFilter();
-        
-        // 新增：每次 renderAll 後，更新帳號編輯按鈕的狀態
         updateAccountEditBtnState();
     }
 
@@ -282,7 +395,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (selectedYear !== 'all') title += ` (${selectedYear}${selectedMonth !== 'all' ? '-' + selectedMonth : ''})`;
         historyTableTitle.innerHTML = `<i class="bi bi-table"></i> ${title}`;
 
-        // 修正：將排序改為從新到舊 (b.date.localeCompare(a.date))
         const sortedRecords = [...filteredRecords].sort((a, b) => b.date.localeCompare(a.date));
         const fragment = document.createDocumentFragment();
         sortedRecords.forEach(record => {
@@ -324,7 +436,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const scrollableContent = document.createElement('div');
         scrollableContent.id = 'event-stats-content';
         
-        // 修正：將排序改為從新到舊 (b.firstDate.localeCompare(a.firstDate))
         const sortedEvents = Object.entries(eventStats).sort(([, a], [, b]) => b.firstDate.localeCompare(a.firstDate));
         
         if (sortedEvents.length === 0) scrollableContent.innerHTML = `<p><i>尚無資料</i></p>`;
@@ -370,28 +481,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const masterEventNames = filteredMasterEvents.map(e => e.event);
         
-        // --- 修正：使用自訂排序邏輯，最新日期在前，無日期活動在後 ---
         const allEventNames = [...new Set([...userEventNames, ...masterEventNames])].sort((a, b) => {
             const dateA = extractEventDate(a);
             const dateB = extractEventDate(b);
-
-            // Case 1: 兩者都有日期 (最新日期在前)
-            if (dateA && dateB) {
-                // dateB > dateA -> -1 (B comes first)
-                return dateB.localeCompare(dateA); 
-            }
-            // Case 2: A 有日期，B 無日期 (A 在前)
-            if (dateA && !dateB) {
-                return -1;
-            }
-            // Case 3: B 有日期，A 無日期 (B 在前)
-            if (!dateA && dateB) {
-                return 1;
-            }
-            // Case 4: 兩者皆無日期 (將其放到最下方，並用字串升序排序)
+            if (dateA && dateB) return dateB.localeCompare(dateA); 
+            if (dateA && !dateB) return -1;
+            if (!dateA && dateB) return 1;
             return a.localeCompare(b);
         });
-        // -----------------------------------------------------------------
 
         eventSelect.innerHTML = '';
         const fragment = document.createDocumentFragment();
@@ -448,8 +545,6 @@ document.addEventListener('DOMContentLoaded', () => {
         sortedAccounts.forEach(name => { const option = document.createElement('option'); option.value = name; option.textContent = name; fragment.appendChild(option); });
         accountSelect.appendChild(fragment);
         
-        // 修正：在非編輯模式下，嘗試保留當前選定的值 (如果是有效帳號)
-        // 否則預設選中 '--new--'
         if (accountSelect.querySelector(`option[value="${currentAccount}"]`)) {
              accountSelect.value = currentAccount;
         } else if (!options.isEditMode) {
@@ -457,18 +552,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 新增：更新帳號編輯按鈕的狀態 (工具提示和顯示/隱藏)
     function updateAccountEditBtnState() {
         if (!editAccountBtn) return;
         const selectedAccount = accountSelect.value;
         if (editMode) {
-             // 編輯模式下，按鈕用於切換輸入框來進行編輯
             editAccountBtn.title = '編輯帳號資訊或新增記錄';
             editAccountBtn.style.display = 'block';
         } else {
-             // 非編輯模式下，按鈕用於切換到新增輸入框
             editAccountBtn.title = (selectedAccount === '--new--') ? '輸入新帳號名稱' : '切換到新增帳號輸入';
-            editAccountBtn.style.display = 'block'; // 總是顯示，提供一致性
+            editAccountBtn.style.display = 'block'; 
         }
     }
 
@@ -477,20 +569,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const editButton = e.target.closest('.btn-warning');
         if (deleteButton) {
             const idToDelete = parseInt(deleteButton.getAttribute('data-id'), 10);
-            if (confirm('確定要刪除這筆紀錄嗎？')) { records = records.filter(record => record.id !== idToDelete); saveRecords(); renderAll(); resetFormState(); showToast('紀錄已刪除', 'success'); }
+            if (confirm('確定要刪除這筆紀錄嗎？')) { 
+                records = records.filter(record => record.id !== idToDelete); 
+                saveData(); // Updated to auto-save
+                renderAll(); 
+                resetFormState(); 
+                showToast('紀錄已刪除', 'success'); 
+            }
         } else if (editButton) {
             const idToEdit = parseInt(editButton.getAttribute('data-id'), 10);
             const recordToEdit = records.find(r => r.id === idToEdit);
             if (recordToEdit) {
                 if (!globalEditMode) { showToast('請先點擊右下角的 "進入編輯模式"', 'info'); return; }
                 showAccountSelectUI(); eventSelect.value = recordToEdit.event; 
-                
-                // 進入編輯模式，並載入選中的帳號
                 enterEditMode();
                 accountSelect.value = recordToEdit.account; 
-                // 必須再次呼叫 loadRecordForEdit，因為 enterEditMode 會將 accountSelect.value 設為 --batch--
                 loadRecordForEdit(recordToEdit.account); 
-
                 window.scrollTo({ top: 0, behavior: 'smooth' }); showToast('請在上方表單編輯', 'info');
             }
         }
@@ -504,13 +598,10 @@ document.addEventListener('DOMContentLoaded', () => {
         togglePullFields(true); showEventSelectUI(); updateEventFormSelect(records); 
         eventSelect.value = '--new--'; isAddingNewEvent = false;
         handleEventSelectChange(); 
-        
         showAccountSelectUI(); 
         updateAccountFormSelect(getSortedAccountNames(), { isEditMode: false });
         accountSelect.value = '--new--'; 
         accountInput.value = '';
-        
-        // 新增：確保按鈕狀態正確
         updateAccountEditBtnState();
     }
 
@@ -518,23 +609,19 @@ document.addEventListener('DOMContentLoaded', () => {
         toastMessage.textContent = message;
         toastMessage.style.backgroundColor = type === 'error' ? '#dc3545' : (type === 'info' ? '#0d6efd' : '#28a745');
         toastMessage.classList.add('show'); 
-        // 修正：將顯示時間設定為 3000 毫秒 (3秒)
         setTimeout(() => toastMessage.classList.remove('show'), 3000);
     }
 
-    // 修正：控制包含下拉選單和按鈕的整個 input-group 容器
     function showAccountSelectUI() { 
         accountSelectGroup.style.display = 'flex'; 
         accountInputGroup.style.display = 'none'; 
         isAddingNewAccount = false; 
         updateAccountEditBtnState(); 
     }
-    // 修正：控制包含下拉選單和按鈕的整個 input-group 容器
     function showAccountInputUI() { 
         accountSelectGroup.style.display = 'none'; 
         accountInputGroup.style.display = 'block'; 
         isAddingNewAccount = true; 
-        // 修正：使用 { preventScroll: true } 來防止頁面跳轉
         accountInput.focus({ preventScroll: true }); 
         updateAccountEditBtnState(); 
     }
@@ -546,7 +633,15 @@ document.addEventListener('DOMContentLoaded', () => {
         else { pullsInput.classList.add('field-disabled'); notesInput.classList.add('field-disabled'); pullsInput.value = ''; notesInput.value = ''; }
     }
 
-    clearButton.addEventListener('click', () => { if (confirm('警告：這將刪除所有儲存的抽卡紀錄！確定嗎？')) { records = []; saveRecords(); renderAll(); resetFormState(); showToast('所有資料已清除', 'error'); } });
+    clearButton.addEventListener('click', () => { 
+        if (confirm('警告：這將刪除所有儲存的抽卡紀錄！確定嗎？')) { 
+            records = []; 
+            saveData(); // Auto-save
+            renderAll(); 
+            resetFormState(); 
+            showToast('所有資料已初始化', 'error'); 
+        } 
+    });
     exportButton.addEventListener('click', () => {
         if (records.length === 0) { showToast('目前沒有資料可匯出', 'info'); return; }
         const blob = new Blob([JSON.stringify(records, null, 2)], { type: 'application/json' });
@@ -554,47 +649,60 @@ document.addEventListener('DOMContentLoaded', () => {
         a.click(); showToast('資料已匯出！', 'success');
     });
 
-    // 匯出單一活動 JSON 功能：用於生成單個活動的模板
+    // Export Event JSON (Admin only)
     exportEventJsonButton.addEventListener('click', () => {
         const selectedEventName = eventSelect.value;
-        
         if (!selectedEventName || selectedEventName === '--new--') {
             showToast('請先選擇一個有效的活動！', 'error');
             return;
         }
-
         const eventToExport = masterEvents.find(e => e.event === selectedEventName);
         const dateValue = dateInput.value;
         const tagValue = tagSelect.value;
-
-        // 匯出當前表單或 masterEvents 中的活動資訊作為模板
         const exportData = {
             event: selectedEventName,
-            date: eventToExport ? eventToExport.date : dateValue, // 優先使用 masterEvents 的日期
-            tag: eventToExport ? eventToExport.tag : (tagValue !== 'none' ? tagValue : '') // 優先使用 masterEvents 的標籤
+            date: eventToExport ? eventToExport.date : dateValue, 
+            tag: eventToExport ? eventToExport.tag : (tagValue !== 'none' ? tagValue : '') 
         };
-        
-        // 創建一個只包含單一活動物件的 JSON 陣列
         const blob = new Blob([JSON.stringify([exportData], null, 2)], { type: 'application/json' });
         const eventShortName = selectedEventName.substring(0, 20).replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
         const fileName = `event_${eventShortName}_template.json`;
-
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fileName;
         a.click();
         showToast(`已匯出活動模板：${selectedEventName}`, 'info');
     });
     
-    importButton.addEventListener('click', () => { if (confirm('警告：匯入將覆蓋目前紀錄！')) importFileInput.click(); });
+    // Import Data Button (Unified: Data JSON OR Admin Key)
+    importButton.addEventListener('click', () => importFileInput.click());
     importFileInput.addEventListener('change', (e) => {
         const file = e.target.files[0]; if (!file) return;
         const reader = new FileReader();
         reader.onload = (event) => {
             try {
-                const importedData = JSON.parse(event.target.result);
-                if (Array.isArray(importedData)) { records = importedData; saveRecords(); renderAll(); showToast('資料已成功匯入！', 'success'); }
-                else throw new Error('格式錯誤');
-            } catch (err) { showToast('匯入失敗！檔案格式錯誤。', 'error'); }
-            finally { importFileInput.value = null; }
+                const jsonData = JSON.parse(event.target.result);
+                
+                // Check for Admin Key
+                if (jsonData.enableAdmin === true) {
+                    document.body.classList.add('is-admin');
+                    adminBadge.style.display = 'inline-block';
+                    showToast('管理員模式已啟用！', 'success');
+                    return; // Stop loading as data
+                }
+
+                // Normal Data Load
+                if (Array.isArray(jsonData)) { 
+                    records = jsonData; 
+                    saveData(); // Auto-save imported data
+                    renderAll(); 
+                    showToast('資料已成功載入！', 'success'); 
+                } else { 
+                    throw new Error('格式錯誤'); 
+                }
+            } catch (err) { 
+                showToast('載入失敗！檔案格式錯誤。', 'error'); 
+            } finally { 
+                importFileInput.value = null; 
+            }
         };
         reader.readAsText(file);
     });
@@ -603,21 +711,17 @@ document.addEventListener('DOMContentLoaded', () => {
         editMode = false; submitBtnText.textContent = '儲存紀錄'; cancelEditBtn.style.display = 'inline-block'; editEventBtn.style.display = 'none';
         showEventInputUI(); eventInput.value = ''; dateInput.valueAsDate = new Date(); tagSelect.value = 'none'; togglePullFields(true); pullsInput.value = ''; notesInput.value = '';
         showAccountSelectUI(); updateAccountFormSelect(getSortedAccountNames(), { isEditMode: false }); accountSelect.value = '--new--'; showToast('請輸入新活動資訊', 'info');
-        updateAccountEditBtnState(); // 確保按鈕狀態正確
+        updateAccountEditBtnState(); 
     }
     
-    // 新增：進入帳號編輯/新增模式的邏輯
     function enterAccountEditMode() {
         const accountName = accountSelect.value;
         if (accountName === '--new--') {
-            // 從下拉選單的 '--新增帳號--' 點擊按鈕，直接切換到輸入框
             showAccountInputUI();
-            accountInput.value = ''; // 確保新增帳號時是空的
+            accountInput.value = ''; 
         } else if (accountName === '--batch--') {
-             // 處理編輯模式下的批次選擇（雖然這在編輯活動時更常見，但提供處理能力）
             showToast('請先選擇一個特定的帳號進行編輯或取消編輯模式', 'error');
         } else {
-            // 從現有帳號點擊按鈕，視為切換到輸入框準備修改帳號名稱
             showAccountInputUI();
             accountInput.value = accountName;
         }
@@ -628,7 +732,7 @@ document.addEventListener('DOMContentLoaded', () => {
         editMode = true; editEventName = eventName; submitBtnText.textContent = '更新紀錄'; cancelEditBtn.style.display = 'inline-block'; editEventBtn.style.display = 'none';
         showEventInputUI(); eventInput.value = eventName; updateAccountFormSelect(getSortedAccountNames(), { isEditMode: true });
         accountSelect.value = '--batch--'; loadRecordForEdit('--batch--'); showToast('進入編輯模式', 'info');
-        updateAccountEditBtnState(); // 確保按鈕狀態正確
+        updateAccountEditBtnState(); 
     }
     function loadRecordForEdit(accountName) {
         if (!editMode) return;
@@ -648,7 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
         globalEditMode = !globalEditMode;
         document.body.classList.toggle('edit-mode-active', globalEditMode);
         gachaFieldset.disabled = !globalEditMode;
-        modeToggleBtn.classList.toggle('btn-outline-secondary', !globalEditMode); // 修正：使用 btn-outline-secondary
+        modeToggleBtn.classList.toggle('btn-outline-secondary', !globalEditMode); 
         modeToggleBtn.classList.toggle('btn-primary', globalEditMode);
         modeToggleBtn.innerHTML = globalEditMode ? '<i class="bi bi-check-circle"></i> 完成編輯' : '<i class="bi bi-eye"></i> 檢視模式 (點此編輯)';
         resetFormState(); showToast(globalEditMode ? '已進入編輯模式' : '已退出編輯模式', 'info');
@@ -657,7 +761,6 @@ document.addEventListener('DOMContentLoaded', () => {
     accountFilter.addEventListener('change', renderAll); yearFilter.addEventListener('change', handleYearChange); monthFilter.addEventListener('change', renderAll);
     function handleEventSelectChange() {
         const selectedEventName = eventSelect.value;
-        // 修正：當選中 --new-- 時，才顯示編輯按鈕
         editEventBtn.style.display = (selectedEventName === '--new--' || !selectedEventName) ? 'block' : 'none';
         if (selectedEventName !== '--new--') { 
             const m = masterEvents.find(e => e.event === selectedEventName); 
@@ -668,33 +771,29 @@ document.addEventListener('DOMContentLoaded', () => {
     editEventBtn.addEventListener('click', () => eventSelect.value === '--new--' ? enterAddMode() : enterEditMode());
     cancelNewEvent.addEventListener('click', resetFormState);
     
-    // 修正：移除 accountSelect 的 change 事件，改由新按鈕處理，並在 select 改變時更新按鈕狀態
     accountSelect.addEventListener('change', () => {
         updateAccountEditBtnState();
     });
     
-    // 新增：處理帳號編輯按鈕的點擊事件
     editAccountBtn.addEventListener('click', enterAccountEditMode);
     
     cancelNewAccount.addEventListener('click', () => { 
         showAccountSelectUI(); 
-        // 修正：回到新增模式下的 --new-- 選項
         accountSelect.value = '--new--'; 
     });
     function handleYearChange() { updateMonthFilter(); renderAll(); }
 
     async function init() { 
-        await fetchInitialEvents(); // 修正：使用新的初始載入函式
+        await loadMasterEvents(); 
         loadRecords(); 
         renderAll(); 
         resetFormState(); 
         gachaFieldset.disabled = true; 
         
-        // 修正：確保在初次載入時，模式切換按鈕的文字正確
         modeToggleBtn.classList.add('btn-outline-secondary');
         modeToggleBtn.innerHTML = '<i class="bi bi-eye"></i> 檢視模式 (點此編輯)';
 
-        updateAccountEditBtnState(); // 初始化帳號編輯按鈕狀態
+        updateAccountEditBtnState(); 
     }
     init();
 });

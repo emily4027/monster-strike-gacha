@@ -18,6 +18,25 @@
         <header class="app-header text-center">
             <div class="icon-badge mx-auto mb-3">📊</div>
             <h1>怪物彈珠抽蛋統計</h1>
+            
+            <!-- 新增：雲端狀態指示器 (仿照果實分配工具) -->
+            <div id="cloudStatus" class="cloud-status" style="display: none;">
+                <span class="status-dot"></span>
+                <span id="cloudStatusText">連線中...</span>
+            </div>
+
+            <!-- Google 登入區塊 -->
+            <div id="auth-container" class="mt-2">
+                <button type="button" id="google-login-btn" class="auth-btn login" style="display: none;">
+                    <i class="bi bi-google"></i> 登入 Google 帳號以啟用雲端功能
+                </button>
+                
+                <div id="user-info" style="display: none;">
+                    <img id="user-avatar" src="" alt="User" class="rounded-circle me-2" style="width: 30px; height: 30px;">
+                    <span id="user-display-name" class="me-3 fw-bold"></span>
+                    <button type="button" id="logout-btn" class="auth-btn logout btn btn-sm btn-outline-secondary">登出</button>
+                </div>
+            </div>
         </header>
 
         <!-- 1. 資料輸入表單 -->
@@ -58,7 +77,6 @@
                     </div>
                     <div class="col-md-3" id="account-field-container">
                         <label for="account-select" class="form-label">帳號</label>
-                        <!-- 修正：將 account-select 和新按鈕包在 input-group 中 -->
                         <div class="input-group">
                             <select id="account-select" class="form-select">
                                 <!-- 選項會由 JS 動態載入 -->
@@ -111,19 +129,16 @@
                     <label for="account-filter" class="form-label stat-filter-label">帳號</label>
                     <select id="account-filter" class="form-select mb-2">
                         <option value="all">全部帳號</option>
-                        <!-- 其他選項由 JS 動態產生 -->
                     </select>
 
                     <label for="year-filter" class="form-label stat-filter-label">年份</label>
                     <select id="year-filter" class="form-select mb-2">
                         <option value="all">全部年份</option>
-                        <!-- 其他選項由 JS 動態產生 -->
                     </select>
 
                     <label for="month-filter" class="form-label stat-filter-label">月份</label>
                     <select id="month-filter" class="form-select mb-3" disabled>
                         <option value="all">全部月份</option>
-                        <!-- 其他選項由 JS 動態產生 -->
                     </select>
                     
                     <h5 id="total-pulls-title" class="mt-3"><i class="bi bi-gem"></i> 總投入抽數</h5>
@@ -132,12 +147,10 @@
                 <!-- 卡片2: 各帳號抽數 -->
                 <div class="stat-card" id="account-stats">
                     <h5><i class="bi bi-people-fill"></i> 各帳號總抽數</h5>
-                    <!-- 內容將由 JavaScript 動態生成 -->
                 </div>
                 <!-- 卡片3: 各活動抽數 (可滾動) -->
                 <div class="stat-card" id="event-stats">
                     <h5><i class="bi bi-calendar-event-fill"></i> 各活動總抽數</h5>
-                    <!-- 內容將由 JavaScript 動態生成 (包含滾動區) -->
                 </div>
             </div>
         </div>
@@ -159,42 +172,40 @@
                             <th>操作</th>
                         </tr>
                     </thead>
-                    <tbody id="history-table-body">
-                        <!-- JS -->
-                    </tbody>
+                    <tbody id="history-table-body"></tbody>
                 </table>
             </div>
         </div>
         
         <!-- 4. 資料管理 -->
         <div class="section-card mt-4 mb-5">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h2><i class="bi bi-database-fill-gear"></i> 資料管理</h2>
+                <span id="admin-badge" class="badge bg-danger" style="display: none;">管理員模式</span>
             </div>
             <div class="p-2">
                 <div class="btn-group w-100 flex-wrap">
-                    <button id="export-data" class="btn btn-success custom-btn m-1"><i class="bi bi-download"></i> 匯出備份</button>
-                    
-                    <!-- 新增：遠端同步活動按鈕 -->
+                    <!-- 一般功能 -->
+                    <button id="export-data" class="btn btn-success custom-btn m-1" title="儲存目前紀錄為 JSON 檔案"><i class="bi bi-save"></i> 儲存資料</button>
+                    <button id="import-data" class="btn btn-info custom-btn m-1 text-white" title="載入 JSON 檔案或管理員金鑰"><i class="bi bi-folder2-open"></i> 載入資料</button>
                     <button id="sync-remote-events" class="btn btn-primary custom-btn m-1"><i class="bi bi-cloud-download"></i> 同步官方活動</button>
-                    <!-- 新增：匯入活動檔案按鈕 -->
-                    <button id="import-events-file-btn" class="btn btn-secondary custom-btn m-1"><i class="bi bi-file-earmark-arrow-up"></i> 匯入活動檔案</button>
-
-                    <button id="export-event-json" class="btn btn-info custom-btn m-1 text-white"><i class="bi bi-card-list"></i> 匯出活動 JSON</button>
-                    <button id="import-data" class="btn btn-info custom-btn m-1 text-white"><i class="bi bi-upload"></i> 匯入備份</button>
-                    <button id="clear-data" class="btn btn-danger custom-btn m-1"><i class="bi bi-trash3"></i> 清除資料</button>
+                    <button id="clear-data" class="btn btn-danger custom-btn m-1"><i class="bi bi-trash3"></i> 初始化資料</button>
+                    
+                    <!-- 管理員功能 (預設隱藏) -->
+                    <button id="export-event-json" class="btn btn-secondary custom-btn m-1 admin-only"><i class="bi bi-card-list"></i> 匯出活動 JSON</button>
+                    <button id="import-events-file-btn" class="btn btn-secondary custom-btn m-1 admin-only"><i class="bi bi-file-earmark-arrow-up"></i> 匯入活動檔案</button>
                 </div>
+                
+                <!-- 隱藏的檔案輸入框 -->
                 <input type="file" id="import-file-input" accept=".json" style="display: none;">
-                <!-- 新增：匯入活動檔案的隱藏 input -->
                 <input type="file" id="import-events-file-input" accept=".json" style="display: none;">
             </div>
         </div>
     </div>
 
-    <!-- 懸浮工具箱菜單 (精準複製圖中結構) -->
+    <!-- 懸浮工具箱菜單 -->
     <div class="toolbox-menu-wrapper" title="滑鼠懸停以展開菜單">
         <div class="toolbox-items-list">
-            <!-- 項目 (上到下) -->
             <a href="https://emily4027.github.io/monster-strike-toolbox/" class="toolbox-item">
                 <i class="bi bi-house-fill"></i> 工具箱首頁
             </a>
@@ -205,7 +216,6 @@
                 <i class="bi bi-bar-chart-line-fill"></i> 抽卡統計 (現行)
             </a>
         </div>
-        <!-- 主按鈕 (回工具箱) -->
         <button type="button" class="toolbox-main-btn">
             <i class="bi bi-tools"></i> 工具箱
         </button>
@@ -213,6 +223,39 @@
 
     <!-- 訊息提示框 -->
     <div id="toast-message"></div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAjpfcNC4ZniqIxYzgYwp5Cs_8gbbmflVY",
+            authDomain: "ms-toolbox-web.firebaseapp.com",
+            projectId: "ms-toolbox-web",
+            storageBucket: "ms-toolbox-web.firebasestorage.app",
+            messagingSenderId: "777818785736",
+            appId: "1:777818785736:web:880b878f4a510132dfe2fd",
+            measurementId: "G-7KV0FSL1RG"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        
+        // 將 Firebase 物件掛載到 window 以便 script.js 使用
+        window.firebaseAuth = auth;
+        window.db = db;
+        window.GoogleAuthProvider = GoogleAuthProvider;
+        window.signInWithPopup = signInWithPopup;
+        window.signOut = signOut;
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.doc = doc;
+        window.setDoc = setDoc;
+        window.getDoc = getDoc;
+        window.serverTimestamp = serverTimestamp;
+    </script>
 
     <!-- 引入 JavaScript 檔案 -->
     <script src="script.js" defer></script>

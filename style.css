@@ -1,10 +1,10 @@
 /* --- 變數覆蓋 (Bootstrap Override) --- */
 :root {
     --bs-body-font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
-    --bs-body-bg: transparent; /* 使用自訂背景 */
+    --bs-body-bg: transparent; 
     --primary-color: #333;
-    --accent-blue: #5c6bc0; /* 主色調 */
-    --accent-light-blue: #e8eaf6; /* 懸停色 */
+    --accent-blue: #5c6bc0; 
+    --accent-light-blue: #e8eaf6; 
     --card-bg: rgba(255, 255, 255, 0.95);
     --card-shadow: 0 8px 20px rgba(0,0,0,0.05);
     --border-radius: 16px;
@@ -64,6 +64,71 @@ body {
     padding-bottom: 8px;
     margin-bottom: 0;
     margin-top: 0;
+}
+
+/* --- 雲端狀態指示器樣式 (參考果實分配) --- */
+.cloud-status {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 10px;
+}
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #ccc;
+    display: inline-block;
+}
+.status-online { background-color: #28a745; box-shadow: 0 0 5px #28a745; }
+.status-saving { background-color: #ffc107; box-shadow: 0 0 5px #ffc107; }
+.status-offline { background-color: #6c757d; }
+
+/* --- Auth Styles (Login/Logout) --- */
+#auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 40px;
+}
+
+#user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: white;
+    padding: 5px 15px;
+    border-radius: 25px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.auth-btn.login {
+    border: none;
+    background-color: white;
+    color: #333;
+    font-weight: 600;
+    padding: 8px 20px;
+    border-radius: 25px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.auth-btn.login:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+}
+
+/* --- Admin Mode Utilities --- */
+.admin-only {
+    display: none !important; /* 預設隱藏 */
+}
+body.is-admin .admin-only {
+    display: inline-block !important; /* 開啟管理員模式時顯示 */
 }
 
 /* --- 區塊卡片樣式 --- */
@@ -198,7 +263,7 @@ tr[data-tag="orb"] { border-left: 5px solid #ffc107; }
     font-weight: 500;
 }
 
-/* --- 懸浮工具箱菜單 (精準複製) --- */
+/* --- 懸浮工具箱菜單 --- */
 .toolbox-menu-wrapper {
     position: fixed;
     bottom: 30px;
@@ -213,7 +278,6 @@ tr[data-tag="orb"] { border-left: 5px solid #ffc107; }
 
 /* 主按鈕 */
 .toolbox-main-btn {
-    /* 主按鈕樣式 - 適用於 <a> 和 <button> */
     background: #2c3e50; 
     color: white;
     padding: 12px 24px;
@@ -228,9 +292,7 @@ tr[data-tag="orb"] { border-left: 5px solid #ffc107; }
     white-space: nowrap;
     border: 2px solid rgba(255,255,255,0.5);
     
-    /* 修正：為 <button> 元素添加重置樣式 */
     cursor: pointer;
-    border: none; /* 覆蓋瀏覽器預設按鈕邊框 */
     margin: 0;
     font-family: inherit;
     font-size: 1rem;
@@ -245,10 +307,8 @@ tr[data-tag="orb"] { border-left: 5px solid #ffc107; }
 .toolbox-items-list {
     display: flex;
     flex-direction: column;
-    /* 初始狀態：隱藏 */
     max-height: 0;
     overflow: hidden;
-    /* 懸停時，同時過渡 max-height 和 margin-bottom */
     transition: max-height 0.4s ease-in-out, margin-bottom 0.4s ease-in-out;
     background: white; 
     border-radius: 12px;
@@ -257,10 +317,9 @@ tr[data-tag="orb"] { border-left: 5px solid #ffc107; }
     margin-bottom: 0;
 }
 
-/* Hover effect: Expand the list upwards */
 .toolbox-menu-wrapper:hover .toolbox-items-list {
-    max-height: 300px; /* 足夠高以顯示所有菜單項 */
-    margin-bottom: 8px; /* 在列表和主按鈕之間增加間隔 */
+    max-height: 300px; 
+    margin-bottom: 8px; 
 }
 
 /* 菜單單一項目 */
@@ -283,19 +342,15 @@ tr[data-tag="orb"] { border-left: 5px solid #ffc107; }
     color: var(--accent-blue);
 }
 
-/* 圓角處理 */
 .toolbox-item:first-child {
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
 }
 .toolbox-item:last-child {
     border-bottom: none;
-    /* 這裡不需要底部圓角，因為列表位於主按鈕上方，除非是 active 項目 */
 }
 
-/* Active item (當前頁面) */
 .toolbox-item.active {
-    /* 使用深色主色調作為 Active 項目，符合圖中效果 */
     background-color: var(--accent-blue); 
     color: white;
     font-weight: 700;
@@ -304,35 +359,29 @@ tr[data-tag="orb"] { border-left: 5px solid #ffc107; }
     background-color: #4b5cae;
 }
 
-
-/* --- 訊息提示框 (Toast) 修正 --- */
+/* --- 訊息提示框 (Toast) --- */
 #toast-message {
     position: fixed;
-    top: 20px;       /* 定位到上方 */
-    right: 20px;     /* 定位到右側 */
+    top: 20px;       
+    right: 20px;     
     z-index: 10000;
     padding: 12px 20px;
     color: white;
-    /* 背景色由 JS 根據類型 (success/error/info) 動態設定 */
     border-radius: 12px; 
     opacity: 0; 
     visibility: hidden;
-    /* 修正：增加 transform 變動，讓它從右側滑入 */
     transition: opacity 0.4s ease-in-out, transform 0.4s ease-in-out, visibility 0.4s;
     font-family: var(--bs-body-font-family);
     font-size: 0.95rem;
     font-weight: 500;
     box-shadow: 0 6px 20px rgba(0,0,0,0.2);
     white-space: nowrap;
-    max-width: 90%; /* 確保在移動裝置上不會超出螢幕 */
-
-    /* 初始狀態：隱藏在右側外面 */
+    max-width: 90%; 
     transform: translateX(110%);
 }
 
-/* 顯示時的樣式 */
 #toast-message.show {
     opacity: 1;
     visibility: visible;
-    transform: translateX(0); /* 滑入到定位點 */
+    transform: translateX(0); 
 }

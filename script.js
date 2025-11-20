@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Admin Mode Elements
     const exportEventJsonButton = document.getElementById('export-event-json');
-    const exportAllEventsBtn = document.getElementById('export-all-events-btn'); // 新增按鈕
+    const exportAllEventsBtn = document.getElementById('export-all-events-btn');
     const importEventsFileBtn = document.getElementById('import-events-file-btn');
     const importEventsFileInput = document.getElementById('import-events-file-input');
     const adminBadge = document.getElementById('admin-badge');
@@ -226,7 +226,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadMasterEvents(sourceUrl = 'events.json') {
         try {
-            // [修正] 加入隨機參數來繞過快取 (Cache Busting)
             const fetchUrl = sourceUrl.startsWith('http') 
                 ? `${sourceUrl}?t=${new Date().getTime()}` 
                 : sourceUrl;
@@ -250,12 +249,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Event Listeners ---
 
-    // Sync Remote Events (Updated with Cache Busting)
     syncRemoteEventsBtn.addEventListener('click', async () => {
         if (!confirm('確定要從遠端同步活動清單嗎？遠端新增的活動將與本地清單合併。')) return;
         showToast('正在同步...', 'info');
         try {
-            // [修正] 加入隨機參數來繞過快取
             const fetchUrl = `${REMOTE_EVENTS_URL}?t=${new Date().getTime()}`;
             const response = await fetch(fetchUrl);
             if (!response.ok) throw new Error(`HTTP error!`);
@@ -267,7 +264,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Import Events File (Admin)
     importEventsFileBtn.addEventListener('click', () => importEventsFileInput.click());
     importEventsFileInput.addEventListener('change', (e) => {
         const file = e.target.files[0]; if (!file) return;
@@ -738,15 +734,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     accountFilter.addEventListener('change', renderAll); yearFilter.addEventListener('change', handleYearChange); monthFilter.addEventListener('change', renderAll);
+    
     function handleEventSelectChange() {
         const selectedEventName = eventSelect.value;
-        // 修正：當選中 --new-- 時，才顯示編輯按鈕
-        editEventBtn.style.display = (selectedEventName === '--new--' || !selectedEventName) ? 'block' : 'none';
+        
+        // 修正：總是顯示編輯按鈕，讓使用者可以隨時切換到輸入模式修改活動名稱
+        editEventBtn.style.display = 'block'; 
+        
         if (selectedEventName !== '--new--') { 
             const m = masterEvents.find(e => e.event === selectedEventName); 
             if (m) { dateInput.value = m.date; tagSelect.value = m.tag; }
         }
     }
+    
     eventSelect.addEventListener('change', handleEventSelectChange);
     editEventBtn.addEventListener('click', () => eventSelect.value === '--new--' ? enterAddMode() : enterEditMode());
     cancelNewEvent.addEventListener('click', resetFormState);
@@ -761,8 +761,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     cancelNewAccount.addEventListener('click', () => { 
         showAccountSelectUI(); 
-        // 修正：回到新增模式下的 --new-- 選項
-        accountSelect.value = '--new--'; 
+        
+        // 修正：取消時根據模式回復正確的選項
+        if (editMode) {
+             accountSelect.value = '--batch--';
+        } else {
+             accountSelect.value = '--new--'; 
+        }
     });
     function handleYearChange() { updateMonthFilter(); renderAll(); }
 

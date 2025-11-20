@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Admin Mode Elements
     const exportEventJsonButton = document.getElementById('export-event-json');
+    const exportAllEventsBtn = document.getElementById('export-all-events-btn'); // 新增按鈕
     const importEventsFileBtn = document.getElementById('import-events-file-btn');
     const importEventsFileInput = document.getElementById('import-events-file-input');
     const adminBadge = document.getElementById('admin-badge');
@@ -97,11 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saveTimeout = setTimeout(async () => {
                 try {
                     const { doc, setDoc, serverTimestamp } = window;
-                    
-                    // [修正] 路徑: artifacts/{appId}/users/{userId}/data/gacha_records
-                    // 確保 window.envAppId 存在，否則使用預設
                     const appId = window.envAppId || 'default-app-id';
-                    
                     const userDocRef = doc(window.db, "artifacts", appId, "users", currentUser.uid, "data", "gacha_records");
                     
                     await setDoc(userDocRef, {
@@ -115,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error('[CLOUD] Auto-save failed:', error);
                     updateCloudStatus('offline', '儲存失敗 (權限不足)');
                 }
-            }, 1500); // 1.5s debounce
+            }, 1500); 
         } else if (!isCloudMode) {
              updateCloudStatus('offline', '離線模式 (已存本地)');
         }
@@ -127,8 +124,6 @@ document.addEventListener('DOMContentLoaded', () => {
             window.onAuthStateChanged(window.firebaseAuth, async (user) => {
                 currentUser = user;
                 if (user) {
-                    // Logged In
-                    // 隱藏手動登入按鈕，因為我們使用環境 token
                     loginBtn.style.display = 'none';
                     userInfoDiv.style.display = 'flex';
                     userDisplayNameSpan.textContent = user.displayName || '使用者';
@@ -138,17 +133,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateCloudStatus('saving', '正在從雲端載入...');
                     await loadFromCloud();
                 } else {
-                    // Logged Out
-                    // 顯示登入提示或按鈕 (但主要依賴 token 自動登入)
-                    // 如果沒有 token，按鈕也無法運作，這裡僅作狀態顯示
-                    loginBtn.style.display = 'none'; // 隱藏按鈕，因為只有環境 Token 能登入
+                    loginBtn.style.display = 'none'; 
                     userInfoDiv.style.display = 'none';
                     isCloudMode = false;
                     updateCloudStatus('offline', '未偵測到帳戶 (離線模式)');
                 }
             });
 
-            // Logout Action
             logoutBtn.addEventListener('click', async () => {
                 try {
                     await window.signOut(window.firebaseAuth);
@@ -160,7 +151,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } else {
             console.error("Firebase SDK not loaded.");
-            // loginBtn.textContent = "Firebase 錯誤";
         }
     }, 1000);
 
@@ -169,8 +159,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const { doc, getDoc } = window;
             const appId = window.envAppId || 'default-app-id';
-            
-            // [修正] 路徑: artifacts/{appId}/users/{userId}/data/gacha_records
             const userDocRef = doc(window.db, "artifacts", appId, "users", currentUser.uid, "data", "gacha_records");
             const docSnap = await getDoc(userDocRef);
 
@@ -178,7 +166,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = docSnap.data();
                 if (data.records && Array.isArray(data.records)) {
                     records = data.records;
-                    // Update local storage to match cloud
                     localStorage.setItem('gachaRecords', JSON.stringify(records));
                     renderAll();
                     resetFormState();
@@ -186,9 +173,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     showToast('已載入雲端紀錄', 'success');
                 }
             } else {
-                // No cloud data, try to sync local data to cloud
                 if (records.length > 0) {
-                    saveData(); // Trigger auto-save to upload local data
+                    saveData(); 
                     showToast('已將本地紀錄同步至雲端', 'info');
                 } else {
                     updateCloudStatus('online', '雲端就緒 (尚無資料)');
@@ -240,7 +226,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadMasterEvents(sourceUrl = 'events.json') {
         try {
-            const response = await fetch(sourceUrl);
+            // [修正] 加入隨機參數來繞過快取 (Cache Busting)
+            const fetchUrl = sourceUrl.startsWith('http') 
+                ? `${sourceUrl}?t=${new Date().getTime()}` 
+                : sourceUrl;
+
+            const response = await fetch(fetchUrl);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
             if (Array.isArray(data)) {
@@ -259,12 +250,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Event Listeners ---
 
-    // Sync Remote Events
+    // Sync Remote Events (Updated with Cache Busting)
     syncRemoteEventsBtn.addEventListener('click', async () => {
         if (!confirm('確定要從遠端同步活動清單嗎？遠端新增的活動將與本地清單合併。')) return;
         showToast('正在同步...', 'info');
         try {
-            const response = await fetch(REMOTE_EVENTS_URL);
+            // [修正] 加入隨機參數來繞過快取
+            const fetchUrl = `${REMOTE_EVENTS_URL}?t=${new Date().getTime()}`;
+            const response = await fetch(fetchUrl);
             if (!response.ok) throw new Error(`HTTP error!`);
             const newEvents = await response.json();
             const addedCount = mergeNewEvents(newEvents);
@@ -655,6 +648,42 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         reader.readAsText(file);
+    });
+
+    // Export Single Event (Admin)
+    exportEventJsonButton.addEventListener('click', () => {
+        const selectedEventName = eventSelect.value;
+        if (!selectedEventName || selectedEventName === '--new--') {
+            showToast('請先選擇一個有效的活動！', 'error');
+            return;
+        }
+        const eventToExport = masterEvents.find(e => e.event === selectedEventName);
+        const dateValue = dateInput.value;
+        const tagValue = tagSelect.value;
+        const exportData = {
+            event: selectedEventName,
+            date: eventToExport ? eventToExport.date : dateValue, 
+            tag: eventToExport ? eventToExport.tag : (tagValue !== 'none' ? tagValue : '') 
+        };
+        const blob = new Blob([JSON.stringify([exportData], null, 2)], { type: 'application/json' });
+        const eventShortName = selectedEventName.substring(0, 20).replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+        const fileName = `event_${eventShortName}_template.json`;
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fileName;
+        a.click();
+        showToast(`已匯出活動模板：${selectedEventName}`, 'info');
+    });
+
+    // New: Export All Events (Admin)
+    exportAllEventsBtn.addEventListener('click', () => {
+        if (!masterEvents || masterEvents.length === 0) {
+            showToast('目前沒有活動資料可匯出！', 'error');
+            return;
+        }
+        const blob = new Blob([JSON.stringify(masterEvents, null, 2)], { type: 'application/json' });
+        const fileName = `events_list_${new Date().toISOString().split('T')[0]}.json`;
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fileName;
+        a.click();
+        showToast(`已匯出完整活動清單！(共 ${masterEvents.length} 筆)`, 'success');
     });
 
     function enterAddMode() {

@@ -25,7 +25,7 @@
                 <span id="cloudStatusText">連線中...</span>
             </div>
             
-            <!-- [新增] 認證錯誤訊息顯示區 -->
+            <!-- 認證錯誤訊息顯示區 -->
             <div id="authErrorMsg" style="display: none; color: #b92b27; font-size: 12px; text-align: center; margin-bottom: 10px; padding: 5px; background: #ffe6e6; border-radius: 4px;"></div>
 
             <!-- Google 登入區塊 -->
@@ -195,8 +195,10 @@
                     <button id="clear-data" class="btn btn-danger custom-btn m-1"><i class="bi bi-trash3"></i> 初始化資料</button>
                     
                     <!-- 管理員功能 (預設隱藏) -->
-                    <button id="export-event-json" class="btn btn-secondary custom-btn m-1 admin-only"><i class="bi bi-card-list"></i> 匯出活動 JSON</button>
-                    <button id="import-events-file-btn" class="btn btn-secondary custom-btn m-1 admin-only"><i class="bi bi-file-earmark-arrow-up"></i> 匯入活動檔案</button>
+                    <button id="export-event-json" class="btn btn-secondary custom-btn m-1 admin-only" title="匯出單一活動模板"><i class="bi bi-card-list"></i> 匯出單一活動</button>
+                    <!-- 新增：匯出完整清單按鈕 -->
+                    <button id="export-all-events-btn" class="btn btn-warning custom-btn m-1 admin-only" title="匯出完整的 events.json"><i class="bi bi-list-stars"></i> 匯出完整清單</button>
+                    <button id="import-events-file-btn" class="btn btn-secondary custom-btn m-1 admin-only" title="匯入本地 events.json"><i class="bi bi-file-earmark-arrow-up"></i> 匯入活動檔案</button>
                 </div>
                 
                 <!-- 隱藏的檔案輸入框 -->
@@ -254,20 +256,20 @@
         window.firebaseApp = app;
         window.firebaseAuth = auth;
         window.db = db;
-        window.envAppId = appId; // [關鍵] 暴露 App ID
+        window.envAppId = appId;
         
         // 掛載函式
         window.GoogleAuthProvider = GoogleAuthProvider;
         window.signInWithPopup = signInWithPopup;
         window.signOut = signOut;
         window.onAuthStateChanged = onAuthStateChanged;
-        window.signInWithCustomToken = signInWithCustomToken; // [關鍵]
+        window.signInWithCustomToken = signInWithCustomToken;
         window.doc = doc;
         window.setDoc = setDoc;
         window.getDoc = getDoc;
         window.serverTimestamp = serverTimestamp;
 
-        // [關鍵修正] 僅執行帳號登入 (Custom Token)，不使用匿名備案
+        // 僅執行帳號登入 (Custom Token)
         const initAuth = async () => {
           const errorDiv = document.getElementById('authErrorMsg');
           if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -275,7 +277,6 @@
               await signInWithCustomToken(auth, __initial_auth_token);
             } catch (e) {
               console.error("Custom token login failed:", e);
-              // [UI更新] 顯示錯誤訊息給使用者
               if (errorDiv) {
                   const errorCode = e.code || "unknown error";
                   errorDiv.style.display = 'block';

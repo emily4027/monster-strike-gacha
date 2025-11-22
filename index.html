@@ -196,7 +196,6 @@
                     
                     <!-- 管理員功能 (預設隱藏) -->
                     <button id="export-event-json" class="btn btn-secondary custom-btn m-1 admin-only" title="匯出單一活動模板"><i class="bi bi-card-list"></i> 匯出單一活動</button>
-                    <!-- 新增：匯出完整清單按鈕 -->
                     <button id="export-all-events-btn" class="btn btn-warning custom-btn m-1 admin-only" title="匯出完整的 events.json"><i class="bi bi-list-stars"></i> 匯出完整清單</button>
                     <button id="import-events-file-btn" class="btn btn-secondary custom-btn m-1 admin-only" title="匯入本地 events.json"><i class="bi bi-file-earmark-arrow-up"></i> 匯入活動檔案</button>
                 </div>
@@ -226,6 +225,11 @@
         </button>
     </div>
 
+    <!-- 新增：左下角 GitHub 專案連結 -->
+    <a href="https://github.com/emily4027/monster-strike-gacha" target="_blank" class="github-project-link" title="前往 GitHub 專案頁面">
+        <i class="bi bi-github"></i> GitHub
+    </a>
+
     <!-- 訊息提示框 -->
     <div id="toast-message"></div>
 
@@ -249,16 +253,13 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
         
-        // 取得環境 App ID
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-        // 將 Firebase 物件與函式掛載到 window 以便 script.js 使用
         window.firebaseApp = app;
         window.firebaseAuth = auth;
         window.db = db;
         window.envAppId = appId;
         
-        // 掛載函式
         window.GoogleAuthProvider = GoogleAuthProvider;
         window.signInWithPopup = signInWithPopup;
         window.signOut = signOut;
@@ -269,7 +270,6 @@
         window.getDoc = getDoc;
         window.serverTimestamp = serverTimestamp;
 
-        // 僅執行帳號登入 (Custom Token)
         const initAuth = async () => {
           const errorDiv = document.getElementById('authErrorMsg');
           if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {

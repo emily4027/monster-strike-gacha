@@ -98,6 +98,10 @@ document.addEventListener('DOMContentLoaded', () => {
             saveTimeout = setTimeout(async () => {
                 try {
                     const { doc, setDoc, serverTimestamp } = window;
+                    if (!doc || !setDoc || !serverTimestamp) {
+                        throw new Error("Firebase SDK functions missing");
+                    }
+
                     const appId = window.envAppId || 'default-app-id';
                     const userDocRef = doc(window.db, "artifacts", appId, "users", currentUser.uid, "data", "gacha_records");
                     
@@ -118,8 +122,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Firebase Auth & Initialization ---
-    setTimeout(() => {
+    // --- Firebase Auth & Initialization (Optimized: Polling instead of fixed timeout) ---
+    function initFirebaseAuth(retries = 0) {
         if (window.firebaseAuth) {
             window.onAuthStateChanged(window.firebaseAuth, async (user) => {
                 currentUser = user;
@@ -133,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateCloudStatus('saving', '正在從雲端載入...');
                     await loadFromCloud();
                 } else {
-                    loginBtn.style.display = 'none'; 
+                    loginBtn.style.display = 'block'; // 確保登入按鈕在未登入時顯示
                     userInfoDiv.style.display = 'none';
                     isCloudMode = false;
                     updateCloudStatus('offline', '未偵測到帳戶 (離線模式)');
@@ -148,11 +152,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error(error);
                 }
             });
+            
+            // 綁定登入按鈕事件 (如果尚未綁定)
+            loginBtn.onclick = async () => {
+                try {
+                    const provider = new window.GoogleAuthProvider();
+                    await window.signInWithPopup(window.firebaseAuth, provider);
+                } catch (error) {
+                    console.error("Login failed:", error);
+                    showToast('登入失敗', 'error');
+                }
+            };
 
+        } else if (retries < 50) { // 嘗試 50 次 * 100ms = 5秒
+            setTimeout(() => initFirebaseAuth(retries + 1), 100);
         } else {
-            console.error("Firebase SDK not loaded.");
+            console.error("Firebase SDK not loaded after timeout.");
+            updateCloudStatus('offline', 'SDK 載入失敗 (離線模式)');
         }
-    }, 1000);
+    }
+    
+    // 啟動 Firebase 偵測
+    initFirebaseAuth();
 
     // --- Cloud Load Logic ---
     async function loadFromCloud() {
@@ -442,10 +463,21 @@ document.addEventListener('DOMContentLoaded', () => {
         return [...preferred, ...others];
     }
 
+    // Optimization: Use RegExp instead of loop through array of strings for better performance
     function getCleanEventName(event, date) {
-        let displayEventName = event; const year = date.substring(0, 4); const monthStr = date.split('-')[1]; const monthNum = parseInt(monthStr, 10);
-        const patterns = [`${year}-${monthStr}月`, `${year}-${monthNum}月`, `${year}年${monthStr}月`, `${year}年${monthNum}月`, `${year}/${monthStr}月`, `${year}/${monthNum}月`];
-        for (const pattern of patterns) { if (displayEventName.startsWith(pattern)) { displayEventName = displayEventName.substring(pattern.length).trim(); break; } }
+        let displayEventName = event;
+        const year = date.substring(0, 4);
+        const monthStr = date.split('-')[1];
+        const monthNum = parseInt(monthStr, 10);
+
+        // 建構動態 Regex：匹配 "YYYY-MM月", "YYYY年MM月", "YYYY/MM月" 等模式
+        // 注意：這裡使用 new RegExp 是為了動態插入年份與月份
+        // 模式：開頭是 (年份 + 分隔符 + 月份 + "月"?)，後面可能接空格
+        const pattern = new RegExp(`^${year}[-年/]0?${monthNum}月?\\s*`);
+        
+        // 直接替換，比對陣列迴圈更有效率
+        displayEventName = displayEventName.replace(pattern, '').trim();
+
         return displayEventName || event;
     }
 

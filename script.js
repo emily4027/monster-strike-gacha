@@ -22,8 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitBtnText = document.getElementById('submit-btn-text');
     const cancelEditBtn = document.getElementById('cancel-edit-btn');
     const accountFilter = document.getElementById('account-filter');
-    const yearFilter = document.getElementById('year-filter');
-    const monthFilter = document.getElementById('month-filter');
+    const dateFilter = document.getElementById('date-filter'); 
     const historyTableTitle = document.getElementById('history-table-title');
     
     // Data Management Buttons
@@ -187,6 +186,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = docSnap.data();
                 if (data.records && Array.isArray(data.records)) {
                     records = data.records;
+                    
+                    // [新增] 從雲端載入後，自動正規化舊資料
+                    normalizeAllRecords();
+
                     localStorage.setItem('gachaRecords', JSON.stringify(records));
                     renderAll();
                     resetFormState();
@@ -217,6 +220,88 @@ document.addEventListener('DOMContentLoaded', () => {
             return `${year}-${month}`; 
         }
         return null;
+    }
+
+    // Helper: 自動格式化與排序角色字串
+    // [修改] 新增 tag 參數，用於判斷是否為寶珠模式
+    function formatCharacterString(input, tag) {
+        if (!input) return '';
+        // 移除可能的「X抽」前綴 (如果使用者誤填，防呆用)
+        let cleanInput = input.replace(/^(\d+|[\?？]+)\s*[抽].*?[:：\s]/, '');
+        
+        // 切割字串：支援 逗號, 頓號, 空白, 換行, 加號
+        const parts = cleanInput.split(/[,，、\s\+\n]+/);
+        const charList = [];
+
+        parts.forEach(part => {
+            const p = part.trim();
+            if (!p) return;
+
+            // [修正] 優化 Regex 邏輯
+            const match = p.match(/^(.+?)(?:(?:[ *xX×]+)(\d+)[隻體]?|(\d+)[隻體])?$/);
+            
+            if (match) {
+                let name = match[1].trim();
+                let count = 1;
+
+                // Group 2: 分隔符 + 數字 (*2)
+                // Group 3: 數字 + 單位 (2隻)
+                if (match[2]) {
+                    count = parseInt(match[2], 10);
+                } else if (match[3]) {
+                    count = parseInt(match[3], 10);
+                }
+
+                // [新增] 寶珠標籤特殊處理
+                // 如果是寶珠，且名稱本身就是純數字 (因為上面 Regex 不會吃掉純數字了)，則自動補上「顆」
+                if (tag === 'orb' && /^\d+$/.test(name)) {
+                    name += '顆';
+                }
+
+                // 合併重複輸入的角色
+                const existing = charList.find(c => c.name === name);
+                if (existing) {
+                    existing.count += count;
+                } else {
+                    charList.push({ name, count });
+                }
+            }
+        });
+
+        // 排序：數量多 -> 數量少
+        charList.sort((a, b) => b.count - a.count);
+
+        // 組合字串：數量為1時不顯示 *1，用「、」分隔
+        return charList.map(item => {
+            return item.count > 1 ? `${item.name}*${item.count}` : item.name;
+        }).join('、');
+    }
+
+    // [修改] 批次正規化所有紀錄 (傳入 tag)
+    function normalizeAllRecords() {
+        let hasChanges = false;
+        records.forEach(record => {
+            const originalNotes = record.notes || '';
+            const formattedNotes = formatCharacterString(originalNotes, record.tag);
+            
+            if (originalNotes !== formattedNotes) {
+                record.notes = formattedNotes;
+                hasChanges = true;
+            }
+        });
+
+        if (hasChanges) {
+            saveData();
+            console.log("Records have been auto-normalized.");
+        }
+    }
+
+    // [修改] 檢查是否為免費或寶珠標籤，若是且未輸入抽數，則預設為 0
+    function checkFreeTagDefault() {
+        const tag = tagSelect.value;
+        if ((tag === 'free' || tag === 'orb') && pullsInput.value === '') {
+            pullsInput.value = 0;
+        }
     }
 
     function mergeNewEvents(newEvents) {
@@ -313,7 +398,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const date = dateInput.value;
         const tag = tagSelect.value;
         const pulls = parseInt(pullsInput.value, 10);
-        const notes = notesInput.value;
+        
+        // 在此處進行自動格式化與排序 (針對單筆新增/修改)
+        // [修改] 傳入 tag 以進行特殊處理
+        const rawNotes = notesInput.value;
+        const notes = formatCharacterString(rawNotes, tag);
+
         let event;
         if (isAddingNewEvent || editMode) { event = eventInput.value.trim(); } else {
             event = eventSelect.value;
@@ -367,37 +457,63 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function loadRecords() {
         const data = localStorage.getItem('gachaRecords');
-        if (data && JSON.parse(data).length > 0) { records = JSON.parse(data); } else { records = sampleData; saveData(); }
+        if (data && JSON.parse(data).length > 0) { 
+            records = JSON.parse(data); 
+            // [新增] 載入本地資料時，自動正規化
+            normalizeAllRecords();
+        } else { 
+            records = sampleData; 
+            saveData(); 
+        }
     }
 
     function renderAll() {
         const selectedAccount = accountFilter.value;
-        const selectedYear = yearFilter.value;
-        const selectedMonth = monthFilter.value;
-        let filteredRecords = records;
-        if (selectedAccount !== 'all') filteredRecords = filteredRecords.filter(record => record.account === selectedAccount);
-        let dateFilterPrefix = '';
-        if (selectedYear !== 'all') {
-            dateFilterPrefix = selectedYear;
-            if (selectedMonth !== 'all') dateFilterPrefix += '-' + selectedMonth;
-        }
-        if (dateFilterPrefix !== '') filteredRecords = filteredRecords.filter(r => r.date.startsWith(dateFilterPrefix));
+        const selectedDate = dateFilter.value; // Get selected date filter
+        
+        // Get Selected Tags
+        const selectedTags = Array.from(document.querySelectorAll('.tag-filter:checked')).map(cb => cb.value);
 
-        renderTable(filteredRecords, selectedAccount, selectedYear, selectedMonth);
+        let filteredRecords = records;
+        
+        // 1. Filter by Account
+        if (selectedAccount !== 'all') {
+            filteredRecords = filteredRecords.filter(record => record.account === selectedAccount);
+        }
+        
+        // 2. Filter by Date (Year or Year-Month)
+        if (selectedDate !== 'all') {
+            // selectedDate format is either "YYYY" or "YYYY-MM"
+            // record.date format is "YYYY-MM-DD"
+            // startsWith works perfectly for both cases
+            filteredRecords = filteredRecords.filter(r => r.date.startsWith(selectedDate));
+        }
+
+        // 3. Filter by Tags (Multi-select OR logic)
+        // If no tags selected, show all. If tags selected, show record if its tag matches ANY selected tag.
+        if (selectedTags.length > 0) {
+            filteredRecords = filteredRecords.filter(r => selectedTags.includes(r.tag));
+        }
+
+        renderTable(filteredRecords, selectedAccount, selectedDate);
         calculateStats(filteredRecords, selectedAccount);
         const sortedAccounts = getSortedAccountNames();
         updateEventFormSelect(filteredRecords); 
         updateAccountFilter(sortedAccounts);
         if (!editMode) updateAccountFormSelect(sortedAccounts); 
-        updateYearFilter();
-        updateMonthFilter();
+        updateDateFilter(); // New: Update unified date filter
         updateAccountEditBtnState();
     }
 
-    function renderTable(filteredRecords, selectedAccount, selectedYear, selectedMonth) {
+    function renderTable(filteredRecords, selectedAccount, selectedDate) {
         tableBody.innerHTML = ''; 
         let title = selectedAccount === 'all' ? '歷史紀錄' : `${selectedAccount} 的歷史紀錄`;
-        if (selectedYear !== 'all') title += ` (${selectedYear}${selectedMonth !== 'all' ? '-' + selectedMonth : ''})`;
+        
+        // Update Title based on unified date filter
+        if (selectedDate !== 'all') {
+             title += ` (${selectedDate})`;
+        }
+        
         historyTableTitle.innerHTML = `<i class="bi bi-table"></i> ${title}`;
 
         const sortedRecords = [...filteredRecords].sort((a, b) => b.date.localeCompare(a.date));
@@ -489,12 +605,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateEventFormSelect(recordsToUse) {
         const currentEvent = eventSelect.value;
         const userEventNames = [...new Set(recordsToUse.map(r => r.event))];
-        const selectedYear = yearFilter.value; const selectedMonth = monthFilter.value;
+        // Note: Filter logic for event selection is complex with merged date filter. 
+        // For simplicity, we show all appropriate events or filter by "Year" part of selection.
+        
+        const selectedDate = dateFilter.value;
         let filteredMasterEvents = masterEvents;
-        if (selectedYear !== 'all') {
-            let prefix = selectedYear; if (selectedMonth !== 'all') prefix += '-' + selectedMonth;
-            filteredMasterEvents = masterEvents.filter(e => e.date.startsWith(prefix));
+        
+        if (selectedDate !== 'all') {
+            filteredMasterEvents = masterEvents.filter(e => e.date.startsWith(selectedDate));
         }
+
         const masterEventNames = filteredMasterEvents.map(e => e.event);
         
         const allEventNames = [...new Set([...userEventNames, ...masterEventNames])].sort((a, b) => {
@@ -521,23 +641,153 @@ document.addEventListener('DOMContentLoaded', () => {
         accountFilter.value = currentFilterValue;
     }
 
-    function updateYearFilter() {
-        const currentYear = yearFilter.value;
-        const userYears = records.map(r => r.date.substring(0, 4));
-        const masterYears = masterEvents.map(e => e.date.substring(0, 4));
-        const allYears = [...new Set([...userYears, ...masterYears])].sort((a, b) => b.localeCompare(a));
-        yearFilter.innerHTML = '<option value="all">全部年份</option>';
-        allYears.forEach(year => { const option = document.createElement('option'); option.value = year; option.textContent = year; yearFilter.appendChild(option); });
-        if ([...yearFilter.options].some(o => o.value === currentYear)) yearFilter.value = currentYear;
-    }
+    // [Modified] Unified Date Filter Function
+    function updateDateFilter() {
+        const currentFilterValue = dateFilter.value;
+        
+        // Collect all Years and Year-Months from records and masterEvents
+        const dates = new Set();
+        
+        // 建立一個 Set 來儲存已知是「合作」的活動名稱 (僅用於判斷名稱)
+        const knownCollabEvents = new Set();
+        
+        records.forEach(r => {
+            if (r.tag === 'collab') knownCollabEvents.add(r.event);
+        });
+        masterEvents.forEach(e => {
+            if (e.tag === 'collab') knownCollabEvents.add(e.event);
+        });
+        
+        // 建立一個整合的活動列表 (合併官方活動與使用者自己的紀錄)
+        // 這對於顯示標籤至關重要，因為使用者新增的紀錄可能不在 masterEvents 中
+        const candidateEvents = [...masterEvents];
+        records.forEach(r => {
+            // 如果 records 裡的活動名稱在 masterEvents 找不到，就加進去候選名單
+            // 我們只關心它的名稱和日期，用於下面的月份比對
+            if (!candidateEvents.some(ce => ce.event === r.event)) {
+                candidateEvents.push({
+                    event: r.event,
+                    date: r.date,
+                    tag: r.tag
+                });
+            }
+        });
 
-    function updateMonthFilter() {
-        const selectedYear = yearFilter.value; const currentMonth = monthFilter.value;
-        if (selectedYear === 'all') { monthFilter.disabled = true; monthFilter.value = 'all'; monthFilter.innerHTML = '<option value="all">全部月份</option>'; }
-        else {
-            monthFilter.disabled = false; monthFilter.innerHTML = `<option value="all">全部月份 (${selectedYear})</option>`;
-            for (let i = 1; i <= 12; i++) { const month = i.toString().padStart(2, '0'); const option = document.createElement('option'); option.value = month; option.textContent = `${i}月`; monthFilter.appendChild(option); }
-            monthFilter.value = currentMonth;
+        // [Modified] 強化日期解析邏輯，支援 YYYY-MM 與 YYYY-MM-DD
+        const collectDates = (dateStr) => {
+            if (!dateStr || typeof dateStr !== 'string') return;
+            
+            // 嘗試匹配 YYYY-MM 格式
+            const match = dateStr.match(/^(\d{4})-(\d{2})/);
+            if (match) {
+                const year = match[1];
+                const month = `${match[1]}-${match[2]}`; // YYYY-MM
+                dates.add(year);
+                dates.add(month);
+            }
+        };
+
+        records.forEach(r => collectDates(r.date));
+        masterEvents.forEach(e => {
+            // 優先使用 date 欄位，若無則嘗試從 event 名稱解析
+            let eDate = e.date;
+            if (!eDate) {
+                eDate = extractEventDate(e.event);
+            }
+            collectDates(eDate);
+        });
+
+        // Sort dates descending
+        const sortedDates = [...dates].sort().reverse();
+        
+        // Group by Year
+        const dateTree = {};
+        sortedDates.forEach(d => {
+            if (d.length === 4) { // Year (YYYY)
+                if (!dateTree[d]) dateTree[d] = [];
+            } else { // Month (YYYY-MM)
+                const y = d.substring(0, 4);
+                if (!dateTree[y]) dateTree[y] = [];
+                dateTree[y].push(d);
+            }
+        });
+
+        dateFilter.innerHTML = '<option value="all">全部日期</option>';
+        
+        Object.keys(dateTree).sort().reverse().forEach(year => {
+            // Add Year Option
+            const yearOption = document.createElement('option');
+            yearOption.value = year;
+            yearOption.textContent = `${year}年 (全)`;
+            yearOption.style.fontWeight = 'bold';
+            dateFilter.appendChild(yearOption);
+
+            // Add Month Options
+            const months = dateTree[year].sort().reverse();
+            months.forEach(monthStr => {
+                const monthNum = parseInt(monthStr.split('-')[1], 10);
+                let displayText = `　└ ${monthNum}月`; 
+
+                // [Modified] 顯示合作標籤邏輯優化 - 現在會檢查 candidateEvents (包含 records)
+                const collabEventsInMonth = candidateEvents.filter(e => {
+                    // 取得該活動的 YYYY-MM (e.date 可能是 YYYY-MM-DD 或 YYYY-MM)
+                    let eDate = e.date;
+                    if (!eDate) eDate = extractEventDate(e.event);
+                    
+                    // 只要該活動日期 (如 2025-11-15) "開頭是" 當前月份 (如 2025-11)，就算命中
+                    const isSameMonth = eDate && eDate.startsWith(monthStr);
+                    
+                    // 條件：日期符合該月 AND (官方標記為合作 OR 使用者紀錄中標記為合作)
+                    return isSameMonth && knownCollabEvents.has(e.event);
+                });
+
+                if (collabEventsInMonth.length > 0) {
+                    // 取得活動名稱並去重
+                    const uniqueNames = [...new Set(collabEventsInMonth.map(e => e.event))];
+                    
+                    // 處理名稱顯示邏輯
+                    const processedNames = uniqueNames.map(name => {
+                        // 1. 移除日期前綴 (例如: "2025-11月 ")
+                        let clean = name.replace(/^\d{4}[-年/]\d{1,2}月?\s*/, '');
+                        
+                        // [使用者自訂] 截斷例外清單：這些活動名稱即使包含「×」也不會被截斷
+                        // 如果您想新增其他例外，請直接將活動關鍵字加到下方的陣列中 (字串格式)
+                        const truncationExceptions = [
+                            "SPY×FAMILY"
+                        ];
+
+                        // 2. 處理 "×" 符號截斷 (例如: "超獸神祭×鬼滅之刃" -> "鬼滅之刃")
+                        // 邏輯：必須包含 "×" 且 「不包含」任何例外清單中的文字，才會執行截斷
+                        if (clean.includes('×') && !truncationExceptions.some(ex => clean.includes(ex))) {
+                            // 分割後取最後一段，通常是合作名稱
+                            const parts = clean.split('×');
+                            if (parts.length > 1) {
+                                clean = parts[parts.length - 1];
+                            }
+                        }
+                        return clean.trim();
+                    });
+
+                    // 重新去重 (因為處理過後可能名字一樣)
+                    const finalUniqueNames = [...new Set(processedNames)];
+                    const eventNamesStr = finalUniqueNames.join(' / ');
+                    
+                    // 字數過長截斷
+                    const maxLength = 25;
+                    const displayName = eventNamesStr.length > maxLength ? eventNamesStr.substring(0, maxLength) + '...' : eventNamesStr;
+                    
+                    displayText += ` | 合作：${displayName}`;
+                }
+
+                const monthOption = document.createElement('option');
+                monthOption.value = monthStr;
+                monthOption.textContent = displayText;
+                dateFilter.appendChild(monthOption);
+            });
+        });
+
+        if ([...dateFilter.options].some(o => o.value === currentFilterValue)) {
+            dateFilter.value = currentFilterValue;
         }
     }
 
@@ -579,6 +829,8 @@ document.addEventListener('DOMContentLoaded', () => {
             editAccountBtn.style.display = 'block'; 
         }
     }
+
+    tagSelect.addEventListener('change', checkFreeTagDefault); // [新增] 監聽標籤變更
 
     tableBody.addEventListener('click', (e) => {
         const deleteButton = e.target.closest('.btn-danger');
@@ -663,6 +915,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 if (Array.isArray(jsonData)) { 
                     records = jsonData; 
+                    
+                    // [新增] 匯入資料時，也自動正規化
+                    normalizeAllRecords();
+
                     saveData(); 
                     renderAll(); 
                     showToast('資料已成功載入！', 'success'); 
@@ -765,12 +1021,23 @@ document.addEventListener('DOMContentLoaded', () => {
         let recordToLoad = null;
         if (accountName === '--batch--') {
             togglePullFields(false);
-            recordToLoad = records.find(r => r.event === editEventName) || masterEvents.find(e => e.event === editEventName && { date: e.date, tag: e.tag, pulls: '', notes: '' });
+            recordToLoad = records.find(r => r.event === editEventName) || masterEvents.find(e => e.event === editEventName);
         } else {
             togglePullFields(true);
-            recordToLoad = records.find(r => r.event === editEventName && r.account === accountName) || masterEvents.find(e => e.event === editEventName && { date: e.date, tag: e.tag, pulls: '', notes: '' });
+            recordToLoad = records.find(r => r.event === editEventName && r.account === accountName) || masterEvents.find(e => e.event === editEventName);
         }
-        if (recordToLoad) { dateInput.value = recordToLoad.date || ''; tagSelect.value = recordToLoad.tag || 'none'; if (accountName !== '--batch--') { pullsInput.value = recordToLoad.pulls || ''; notesInput.value = recordToLoad.notes || ''; } }
+
+        if (recordToLoad) { 
+            dateInput.value = recordToLoad.date || ''; 
+            tagSelect.value = recordToLoad.tag || 'none'; 
+            if (accountName !== '--batch--') { 
+                // [修改] 修正 0 抽被視為空值的問題
+                // 原本: pullsInput.value = recordToLoad.pulls || '';
+                // 修正後: 嚴格檢查 undefined 與 null，確保數字 0 能被保留
+                pullsInput.value = (recordToLoad.pulls !== undefined && recordToLoad.pulls !== null) ? recordToLoad.pulls : '';
+                notesInput.value = recordToLoad.notes || ''; 
+            } 
+        }
         else { pullsInput.value = ''; notesInput.value = ''; }
     }
 
@@ -784,7 +1051,12 @@ document.addEventListener('DOMContentLoaded', () => {
         resetFormState(); showToast(globalEditMode ? '已進入編輯模式' : '已退出編輯模式', 'info');
     });
 
-    accountFilter.addEventListener('change', renderAll); yearFilter.addEventListener('change', handleYearChange); monthFilter.addEventListener('change', renderAll);
+    accountFilter.addEventListener('change', renderAll);
+    // [New] Add Listeners for Date and Tag filters
+    dateFilter.addEventListener('change', renderAll);
+    document.querySelectorAll('.tag-filter').forEach(checkbox => {
+        checkbox.addEventListener('change', renderAll);
+    });
     
     function handleEventSelectChange() {
         const selectedEventName = eventSelect.value;
@@ -807,7 +1079,11 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // 填入表單
             if (dateToUse) dateInput.value = dateToUse;
-            if (tagToUse) tagSelect.value = tagToUse;
+            if (tagToUse) {
+                tagSelect.value = tagToUse;
+                // [新增] 連動變更活動時，也要檢查是否需預設 0 抽
+                checkFreeTagDefault(); 
+            }
         }
     }
     
@@ -833,7 +1109,6 @@ document.addEventListener('DOMContentLoaded', () => {
              accountSelect.value = '--new--'; 
         }
     });
-    function handleYearChange() { updateMonthFilter(); renderAll(); }
 
     async function init() { 
         await loadMasterEvents(); 

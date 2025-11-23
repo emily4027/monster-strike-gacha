@@ -17,7 +17,7 @@
     <div class="container main-container">
         <header class="app-header text-center">
             <div class="icon-badge mx-auto mb-3">📊</div>
-            <h1>怪物彈珠抽蛋統計</h1>
+            <h1>怪物彈珠抽蛋統計工具</h1>
             
             <!-- 雲端狀態指示器 -->
             <div id="cloudStatus" class="cloud-status" style="display: none;">
@@ -44,8 +44,12 @@
 
         <!-- 1. 資料輸入表單 -->
         <div class="section-card">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h2><i class="bi bi-pencil-square"></i> 紀錄編輯</h2>
+                <!-- 新增：右上角教學按鈕 -->
+                <button type="button" class="btn btn-info btn-sm text-white" data-bs-toggle="modal" data-bs-target="#helpModal">
+                    <i class="bi bi-question-circle-fill"></i> 格式教學與範例
+                </button>
             </div>
             <form id="gacha-form" class="p-3">
                 <!-- 將所有欄位包裹在 fieldset 中，預設禁用 -->
@@ -97,7 +101,10 @@
                     </div>
                     <div class="col-md-6">
                         <label for="notes" class="form-label">獲得角色</label>
-                        <input type="text" class="form-control" id="notes" placeholder="例如：虹夏*3, 麒麟兒*2 (抽數會自動移除)">
+                        <input type="text" class="form-control" id="notes" placeholder="例如：虹夏*3, 麒麟兒*2">
+                        <div class="form-text mt-1" style="font-size: 0.85rem; color: #6c757d;">
+                            <i class="bi bi-magic"></i> 系統會自動將輸入標準化 (例: 亞森x2 尼奧 -> 亞森*2、尼奧)
+                        </div>
                     </div>
                 </fieldset>
                 
@@ -127,24 +134,38 @@
             <div id="stats-dashboard" class="p-2">
                 <!-- 卡片1: 篩選器 & 總抽數 -->
                 <div class="stat-card filter-card">
-                    <h5 id="filter-title"><i class="bi bi-filter"></i> 篩選</h5>
+                    <h5 id="filter-title"><i class="bi bi-filter"></i> 篩選條件</h5>
                     
+                    <!-- 帳號篩選 -->
                     <label for="account-filter" class="form-label stat-filter-label">帳號</label>
-                    <select id="account-filter" class="form-select mb-2">
+                    <select id="account-filter" class="form-select mb-3">
                         <option value="all">全部帳號</option>
                     </select>
 
-                    <label for="year-filter" class="form-label stat-filter-label">年份</label>
-                    <select id="year-filter" class="form-select mb-2">
-                        <option value="all">全部年份</option>
+                    <!-- 日期篩選 (合併年份與月份) -->
+                    <label for="date-filter" class="form-label stat-filter-label">日期範圍</label>
+                    <select id="date-filter" class="form-select mb-3">
+                        <option value="all">全部日期</option>
+                        <!-- JS 動態填入: 2024年, 2024-01, ... -->
                     </select>
 
-                    <label for="month-filter" class="form-label stat-filter-label">月份</label>
-                    <select id="month-filter" class="form-select mb-3" disabled>
-                        <option value="all">全部月份</option>
-                    </select>
+                    <!-- 標籤多選篩選 -->
+                    <label class="form-label stat-filter-label d-block">活動類型 (可多選)</label>
+                    <div class="btn-group w-100 mb-3" role="group" id="tag-filter-group">
+                        <input type="checkbox" class="btn-check tag-filter" id="tag-filter-honke" value="honke" autocomplete="off">
+                        <label class="btn btn-outline-danger btn-sm" for="tag-filter-honke">本家</label>
+
+                        <input type="checkbox" class="btn-check tag-filter" id="tag-filter-collab" value="collab" autocomplete="off">
+                        <label class="btn btn-outline-primary btn-sm" for="tag-filter-collab" style="--bs-btn-color: #6610f2; --bs-btn-border-color: #6610f2; --bs-btn-hover-bg: #6610f2; --bs-btn-hover-border-color: #6610f2; --bs-btn-active-bg: #6610f2; --bs-btn-active-border-color: #6610f2;">合作</label>
+
+                        <input type="checkbox" class="btn-check tag-filter" id="tag-filter-free" value="free" autocomplete="off">
+                        <label class="btn btn-outline-success btn-sm" for="tag-filter-free">免費</label>
+
+                        <input type="checkbox" class="btn-check tag-filter" id="tag-filter-orb" value="orb" autocomplete="off">
+                        <label class="btn btn-outline-warning btn-sm" for="tag-filter-orb">寶珠</label>
+                    </div>
                     
-                    <h5 id="total-pulls-title" class="mt-3"><i class="bi bi-gem"></i> 總投入抽數</h5>
+                    <h5 id="total-pulls-title" class="mt-3 border-top pt-3"><i class="bi bi-gem"></i> 總投入抽數</h5>
                     <h3 id="total-pulls">0</h3>
                 </div>
                 <!-- 卡片2: 各帳號抽數 -->
@@ -233,6 +254,60 @@
     <!-- 訊息提示框 -->
     <div id="toast-message"></div>
 
+    <!-- Modal: 輸入說明 -->
+    <div class="modal fade" id="helpModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title"><i class="bi bi-info-circle-fill text-primary"></i> 格式教學與範例</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>輸入角色時，您可以使用逗號、頓號或空格來分隔。系統會在儲存時自動幫您排版！</p>
+            
+            <h6 class="fw-bold mt-3 text-success"><i class="bi bi-check-circle-fill"></i> 正確格式範例 (會被自動轉換)</h6>
+            <ul class="list-group list-group-flush mb-3">
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span>標準格式</span>
+                <code>亞森*2、尼奧*1</code>
+              </li>
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span>隨意輸入 (自動修正)</span>
+                <code>亞森x2 尼奧1體/隻</code>
+              </li>
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span>寶珠標籤</span>
+                <code>114 (自動變 114顆)</code>
+              </li>
+            </ul>
+
+            <h6 class="fw-bold mt-3 text-danger"><i class="bi bi-x-circle-fill"></i> 自動轉換失敗範例</h6>
+            <ul class="list-group list-group-flush">
+              <li class="list-group-item">
+                <div class="d-flex justify-content-between">
+                    <span class="fw-bold">錯誤：</span>
+                    <code>5亞森 或 亞森5</code>
+                </div>
+                <small class="text-muted d-block mt-1">原因：數字直接加上名稱時，會被視為當前角色名稱的一部份。</small>
+                <small class="text-primary d-block">修正：應輸入為 <code>亞森5體/隻</code> 或 <code>5*亞森 或 <code>亞森*5</code></small>
+              </li>
+              <li class="list-group-item">
+                <div class="d-flex justify-content-between">
+                    <span class="fw-bold">錯誤：</span>
+                    <code>亞森 14 或 14體 亞森 </code>
+                </div>
+                <small class="text-muted d-block mt-1">原因：數量和名稱之間有空格時，會被視為新的角色。</small>
+                <small class="text-primary d-block">修正：應輸入為 <code>亞森*14</code> 或 <code>14體/隻亞森</code></small>
+              </li>
+            </ul>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" data-bs-dismiss="modal">我瞭解了</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -292,5 +367,7 @@
 
     <!-- 引入 JavaScript 檔案 -->
     <script src="script.js" defer></script>
+    <!-- 引入 Bootstrap JS (for Modal) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

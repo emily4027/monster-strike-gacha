@@ -413,3 +413,11 @@ tr[data-tag="orb"] { border-left: 5px solid #ffc107; }
     box-shadow: 0 6px 15px rgba(0,0,0,0.3);
     color: white;
 }
+
+/* --- Modal 修正 (確保背景不透明) --- */
+.modal-content {
+    background-color: #ffffff !important; /* 強制白色背景 */
+    color: #333 !important; /* 強制深色文字 */
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    border: none;
+}

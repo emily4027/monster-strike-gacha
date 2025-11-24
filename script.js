@@ -54,6 +54,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const REMOTE_EVENTS_URL = 'https://emily4027.github.io/monster-strike-gacha/events.json';
     // [Optimization] 6.2 Cache Key
     const USER_CACHE_KEY = 'gacha_user_cache_v1';
+    // [Optimization] 6.1 Data Cache Key Prefix
+    const DATA_CACHE_PREFIX = 'gacha_cloud_data_';
 
     let records = [];
     let masterEvents = []; 
@@ -78,10 +80,13 @@ document.addEventListener('DOMContentLoaded', () => {
         statusDot.className = 'status-dot'; // reset
         
         if (status === 'online') {
+            statusDot.classList.remove('status-saving', 'status-offline');
             statusDot.classList.add('status-online');
         } else if (status === 'saving') {
+            statusDot.classList.remove('status-online', 'status-offline');
             statusDot.classList.add('status-saving');
         } else {
+            statusDot.classList.remove('status-online', 'status-saving');
             statusDot.classList.add('status-offline');
         }
     }
@@ -143,12 +148,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     const appId = window.envAppId || 'default-app-id';
                     const userDocRef = doc(window.db, "artifacts", appId, "users", currentUser.uid, "data", "gacha_records");
                     
-                    // [Optimization] 使用 merge: true 避免覆蓋整個文件，雖是寫入但可減少意外資料遺失
+                    // [Optimization] 使用 merge: true 避免覆蓋整個文件
                     await setDoc(userDocRef, {
                         records: records,
                         lastUpdated: serverTimestamp()
                     }, { merge: true }); 
                     
+                    // [Optimization] 6.1 寫入成功後，同步更新 sessionStorage 快取
+                    const cacheKey = DATA_CACHE_PREFIX + currentUser.uid;
+                    // 這裡我們只存 records，timestamp 在快取中可忽略或用本地時間模擬
+                    const cacheData = {
+                        records: records,
+                        cachedAt: new Date().getTime()
+                    };
+                    sessionStorage.setItem(cacheKey, JSON.stringify(cacheData));
+                    console.log('[Optimization] 6.1: Updated Data Cache after save');
+
                     updateCloudStatus('online', '雲端就緒 (已同步)');
                     console.log('[CLOUD] Auto-saved successfully.');
                 } catch (error) {
@@ -183,11 +198,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     // [Optimization] 6.1 避免不必要的讀取
                     // 這裡只在「登入成功」時呼叫一次 loadFromCloud
-                    // 若之後只有 scroll 或 mousemove，不會觸發此處邏輯
                     await loadFromCloud();
                 } else {
                     // [Optimization] 6.2 清除快取
                     sessionStorage.removeItem(USER_CACHE_KEY);
+                    // 同時清除資料快取 (確保切換帳號時資料不混用)
+                    // 這裡無法知道上一個 uid，但登出時 renderAuthUI(null) 會重置 UI
                     renderAuthUI(null);
 
                     isCloudMode = false;
@@ -230,12 +246,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Cloud Load Logic ---
     async function loadFromCloud() {
+        if (!currentUser) return;
+
         try {
             const { doc, getDoc } = window;
             const appId = window.envAppId || 'default-app-id';
             const userDocRef = doc(window.db, "artifacts", appId, "users", currentUser.uid, "data", "gacha_records");
             
-            // [Optimization] 這裡是一次性的讀取 (Get)，符合需求
+            // [Optimization] 6.1 Data Cache Check
+            const cacheKey = DATA_CACHE_PREFIX + currentUser.uid;
+            const cachedDataStr = sessionStorage.getItem(cacheKey);
+
+            if (cachedDataStr) {
+                try {
+                    const cachedData = JSON.parse(cachedDataStr);
+                    if (cachedData && Array.isArray(cachedData.records)) {
+                        console.log('[Optimization] 6.1: Data Cache Hit! Skipping Firestore read.');
+                        records = cachedData.records;
+                        
+                        normalizeAllRecords();
+                        localStorage.setItem('gachaRecords', JSON.stringify(records));
+                        renderAll();
+                        resetFormState();
+                        updateCloudStatus('online', '雲端就緒 (快取載入)');
+                        showToast('已載入雲端紀錄 (快取)', 'success');
+                        return; // 成功讀取快取，直接返回，不執行 getDoc
+                    }
+                } catch (e) {
+                    console.warn('Data cache corrupted, falling back to network.', e);
+                    sessionStorage.removeItem(cacheKey);
+                }
+            }
+
+            // 若無快取，才發送網路請求
+            console.log('[Optimization] 6.1: No Cache found, fetching from Firestore...');
             const docSnap = await getDoc(userDocRef);
 
             if (docSnap.exists()) {
@@ -243,9 +287,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.records && Array.isArray(data.records)) {
                     records = data.records;
                     
-                    // [新增] 從雲端載入後，自動正規化舊資料
-                    normalizeAllRecords();
+                    // [Optimization] 6.1 讀取成功後，寫入 sessionStorage 快取
+                    const cacheData = {
+                        records: records,
+                        cachedAt: new Date().getTime()
+                    };
+                    sessionStorage.setItem(cacheKey, JSON.stringify(cacheData));
 
+                    normalizeAllRecords();
                     localStorage.setItem('gachaRecords', JSON.stringify(records));
                     renderAll();
                     resetFormState();

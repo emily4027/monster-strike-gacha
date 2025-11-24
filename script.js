@@ -52,6 +52,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusDot = document.querySelector('.status-dot');
 
     const REMOTE_EVENTS_URL = 'https://emily4027.github.io/monster-strike-gacha/events.json';
+    // [Optimization] 6.2 Cache Key
+    const USER_CACHE_KEY = 'gacha_user_cache_v1';
 
     let records = [];
     let masterEvents = []; 
@@ -84,12 +86,49 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- [Optimization] 6.2 Render Auth UI (Shared Logic) ---
+    function renderAuthUI(userData) {
+        if (userData) {
+            loginBtn.style.display = 'none';
+            userInfoDiv.style.display = 'flex';
+            userDisplayNameSpan.textContent = userData.displayName || '使用者';
+            if (userData.photoURL) {
+                userAvatarImg.src = userData.photoURL;
+            }
+        } else {
+            loginBtn.style.display = 'block';
+            userInfoDiv.style.display = 'none';
+            userDisplayNameSpan.textContent = '';
+            userAvatarImg.src = '';
+        }
+    }
+
+    // --- [Optimization] 6.2 Check Cache on Init ---
+    function checkAuthCache() {
+        const cached = sessionStorage.getItem(USER_CACHE_KEY);
+        if (cached) {
+            try {
+                const userData = JSON.parse(cached);
+                // 立即渲染 UI，不等待 Firebase 回應
+                renderAuthUI(userData);
+                console.log('[Optimization] 6.2: Restored Auth UI from sessionStorage');
+            } catch (e) {
+                console.warn('Cache parse error, clearing.', e);
+                sessionStorage.removeItem(USER_CACHE_KEY);
+            }
+        }
+    }
+    
+    // 立即執行快取檢查
+    checkAuthCache();
+
     // --- Unified Save Function (Local + Cloud Auto-Save) ---
     function saveData() {
         // 1. Always save to LocalStorage immediately
         localStorage.setItem('gachaRecords', JSON.stringify(records));
 
         // 2. If Cloud Mode, Debounce Save to Firestore
+        // [Optimization] 6.1 避免不必要的讀取/寫入：透過 debounce 減少頻率
         if (isCloudMode && currentUser) {
             updateCloudStatus('saving', '儲存中...');
             clearTimeout(saveTimeout);
@@ -104,6 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const appId = window.envAppId || 'default-app-id';
                     const userDocRef = doc(window.db, "artifacts", appId, "users", currentUser.uid, "data", "gacha_records");
                     
+                    // [Optimization] 使用 merge: true 避免覆蓋整個文件，雖是寫入但可減少意外資料遺失
                     await setDoc(userDocRef, {
                         records: records,
                         lastUpdated: serverTimestamp()
@@ -127,17 +167,29 @@ document.addEventListener('DOMContentLoaded', () => {
             window.onAuthStateChanged(window.firebaseAuth, async (user) => {
                 currentUser = user;
                 if (user) {
-                    loginBtn.style.display = 'none';
-                    userInfoDiv.style.display = 'flex';
-                    userDisplayNameSpan.textContent = user.displayName || '使用者';
-                    if (user.photoURL) userAvatarImg.src = user.photoURL;
+                    // [Optimization] 6.2 更新 SessionStorage
+                    const userData = {
+                        uid: user.uid,
+                        displayName: user.displayName,
+                        photoURL: user.photoURL
+                    };
+                    sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify(userData));
+                    
+                    // 再次確認 UI 狀態 (確保資料最新)
+                    renderAuthUI(userData);
                     
                     isCloudMode = true;
                     updateCloudStatus('saving', '正在從雲端載入...');
+                    
+                    // [Optimization] 6.1 避免不必要的讀取
+                    // 這裡只在「登入成功」時呼叫一次 loadFromCloud
+                    // 若之後只有 scroll 或 mousemove，不會觸發此處邏輯
                     await loadFromCloud();
                 } else {
-                    loginBtn.style.display = 'block'; // 確保登入按鈕在未登入時顯示
-                    userInfoDiv.style.display = 'none';
+                    // [Optimization] 6.2 清除快取
+                    sessionStorage.removeItem(USER_CACHE_KEY);
+                    renderAuthUI(null);
+
                     isCloudMode = false;
                     updateCloudStatus('offline', '未偵測到帳戶 (離線模式)');
                 }
@@ -146,6 +198,8 @@ document.addEventListener('DOMContentLoaded', () => {
             logoutBtn.addEventListener('click', async () => {
                 try {
                     await window.signOut(window.firebaseAuth);
+                    // 登出時立即清除快取
+                    sessionStorage.removeItem(USER_CACHE_KEY);
                     showToast('已登出', 'info');
                 } catch (error) {
                     console.error(error);
@@ -180,6 +234,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const { doc, getDoc } = window;
             const appId = window.envAppId || 'default-app-id';
             const userDocRef = doc(window.db, "artifacts", appId, "users", currentUser.uid, "data", "gacha_records");
+            
+            // [Optimization] 這裡是一次性的讀取 (Get)，符合需求
             const docSnap = await getDoc(userDocRef);
 
             if (docSnap.exists()) {

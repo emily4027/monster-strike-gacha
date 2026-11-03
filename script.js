@@ -4,14 +4,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // 檔案結構
     //   1. 設定與常數
     //   2. DOM 快取與狀態
-    //   3. 工具函式 (跳脫、資料驗證、日期/名稱處理)
-    //   4. 雲端狀態與登入 (Firebase)
+    //   3. 工具函式 (跳脫、資料驗證、日期/名稱處理、活動資料整理)
+    //   4. 雲端狀態、登入與管理員判斷 (Firebase)
     //   5. 存檔 / 讀取 (LocalStorage + 雲端)
-    //   6. 角色字串格式化與活動清單
+    //   6. 角色字串格式化與活動清單 (events.json / Firestore)
     //   7. 渲染 (表格、統計、各種下拉選單)
     //   8. 表單模式 (新增 / 編輯 / 帳號)
-    //   9. 事件綁定
+    //   9. 事件綁定 (含管理員功能)
     //  10. 啟動
+    //
+    //  活動清單的資料來源：
+    //    - events.json：靜態備援 / 初始資料
+    //    - Firestore shared/events：管理員維護的正式清單 (有資料時優先使用)
+    //  管理員判斷：Firestore 存在 admins/{登入者 uid} 文件即為管理員。
+    //  真正的寫入權限由 Firestore 規則把關，前端判斷只用來顯示 / 隱藏按鈕。
     // =====================================================
 
 
@@ -25,8 +31,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const LOCAL_RECORDS_KEY = 'gachaRecords';            // localStorage：本機紀錄
     const LAST_UID_KEY = 'gacha_last_uid_v1';            // localStorage：本機紀錄最後一次對應的雲端帳號
 
+    // Firestore 路徑
+    const SHARED_COLLECTION = 'shared';                  // shared/events：所有人可讀、管理員可寫
+    const EVENTS_DOC_ID = 'events';
+    const ADMINS_COLLECTION = 'admins';                  // admins/{uid}：存在即為管理員
+
     const CLOUD_SAVE_DELAY_MS = 1500;
     const TOAST_DURATION_MS = 3000;
+    const FIREBASE_WAIT_RETRIES = 50;                    // 每次間隔 100ms
 
     // 帳號在下拉選單與統計中的優先順序
     const PREFERRED_ACCOUNT_ORDER = ['羽入', '梨花', '沙都子'];
@@ -76,11 +88,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const importFileInput = $('import-file-input');
     const syncRemoteEventsBtn = $('sync-remote-events');
 
-    // 管理員模式
+    // 管理員功能
     const exportEventJsonButton = $('export-event-json');
     const exportAllEventsBtn = $('export-all-events-btn');
     const importEventsFileBtn = $('import-events-file-btn');
     const importEventsFileInput = $('import-events-file-input');
+    const saveEventMasterBtn = $('save-event-master-btn');
+    const deleteEventMasterBtn = $('delete-event-master-btn');
+    const seedEventsBtn = $('seed-events-btn');
     const adminBadge = $('admin-badge');
 
     // Firebase 登入
@@ -107,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentUser = null;
     let isCloudMode = false;
+    let isAdmin = false;
     let saveTimeout = null;
     let hasPendingCloudSave = false;
     let toastTimer = null;
@@ -142,6 +158,51 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     }
 
+    // 活動名稱整理：去掉頭尾空白，連續空白合併成一個
+    function normalizeName(name) {
+        return String(name === undefined || name === null ? '' : name)
+            .replace(/[ \t]{2,}/g, ' ')
+            .trim();
+    }
+
+    const isValidEvent = (e) => e && typeof e === 'object' && typeof e.event === 'string' && normalizeName(e.event);
+
+    // 整理單筆活動資料 (名稱、日期、標籤、舊名稱 aliases)
+    function normalizeMasterEvent(e) {
+        const name = normalizeName(e.event);
+        const aliases = Array.isArray(e.aliases)
+            ? [...new Set(e.aliases.filter((a) => typeof a === 'string').map(normalizeName).filter((a) => a && a !== name))]
+            : [];
+        const result = {
+            ...e,
+            event: name,
+            date: typeof e.date === 'string' ? e.date : '',
+            tag: typeof e.tag === 'string' ? e.tag : ''
+        };
+        if (aliases.length > 0) result.aliases = aliases;
+        else delete result.aliases;
+        return result;
+    }
+
+    // 同名活動只保留第一筆
+    function dedupeMasterEvents(list) {
+        const map = new Map();
+        list.forEach((e) => { if (!map.has(e.event)) map.set(e.event, e); });
+        return [...map.values()];
+    }
+
+    // 舊名稱 -> 新名稱 對照表 (活動更名後，所有使用者的紀錄會自動對應到新名稱)
+    function buildAliasMap() {
+        const names = new Set(masterEvents.map((e) => e.event));
+        const map = new Map();
+        masterEvents.forEach((e) => {
+            (e.aliases || []).forEach((alias) => {
+                if (!names.has(alias)) map.set(alias, e.event);
+            });
+        });
+        return map;
+    }
+
     // 驗證並整理紀錄：略過格式不正確的項目，補齊欄位，確保 id 為不重複的數字
     function sanitizeRecords(list) {
         const seenIds = new Set();
@@ -152,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
         list.forEach((item) => {
             const valid = item && typeof item === 'object'
                 && typeof item.date === 'string' && item.date
-                && typeof item.event === 'string' && item.event
+                && typeof item.event === 'string' && normalizeName(item.event)
                 && typeof item.account === 'string' && item.account;
             if (!valid) {
                 dropped++;
@@ -170,6 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
             clean.push({
                 ...item,
                 id,
+                event: normalizeName(item.event),
                 pulls: Number.isFinite(pulls) && pulls >= 0 ? pulls : 0,
                 notes: typeof item.notes === 'string' ? item.notes : '',
                 tag: typeof item.tag === 'string' ? item.tag : ''
@@ -245,7 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // =====================================================
-    // 4. 雲端狀態與登入 (Firebase)
+    // 4. 雲端狀態、登入與管理員判斷 (Firebase)
     // =====================================================
     function updateCloudStatus(status, msg) {
         cloudStatus.style.display = 'flex';
@@ -284,10 +346,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // 等待 Firebase SDK 與 Firestore 函式就緒
+    async function waitForFirebaseServices() {
+        for (let i = 0; i < FIREBASE_WAIT_RETRIES; i++) {
+            if (window.db && window.doc && window.getDoc) return true;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return false;
+    }
+
     function getCloudDocRef() {
         const appId = window.envAppId || 'default-app-id';
         return window.doc(window.db, 'artifacts', appId, 'users', currentUser.uid, 'data', 'gacha_records');
     }
+
+    const getSharedEventsRef = () => window.doc(window.db, SHARED_COLLECTION, EVENTS_DOC_ID);
 
     function cacheRecords(uid) {
         sessionStorage.setItem(DATA_CACHE_PREFIX + uid, JSON.stringify({ records, cachedAt: Date.now() }));
@@ -400,6 +473,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ---- 管理員 ----
+    function setAdminMode(enabled) {
+        isAdmin = enabled;
+        document.body.classList.toggle('is-admin', enabled);
+        adminBadge.style.display = enabled ? 'inline-block' : 'none';
+    }
+
+    // Firestore 存在 admins/{uid} 文件即為管理員 (文件由你在 Firebase Console 手動建立)
+    async function checkAdminStatus(user) {
+        try {
+            if (!(await waitForFirebaseServices())) throw new Error('Firebase not ready');
+            const snap = await window.getDoc(window.doc(window.db, ADMINS_COLLECTION, user.uid));
+            setAdminMode(snap.exists());
+        } catch (error) {
+            console.warn('[ADMIN] 無法確認管理員身分，視為一般使用者。', error);
+            setAdminMode(false);
+        }
+    }
+
+    function requireAdmin() {
+        if (!isAdmin || !currentUser) {
+            showToast('需要管理員權限', 'error');
+            return false;
+        }
+        return true;
+    }
+
     // 等待 Firebase SDK 載入 (Polling)
     function initFirebaseAuth(retries = 0) {
         if (window.firebaseAuth) {
@@ -412,10 +512,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     isCloudMode = true;
                     updateCloudStatus('saving', '正在從雲端載入...');
-                    await loadFromCloud();
+                    await Promise.all([loadFromCloud(), checkAdminStatus(user)]);
                 } else {
                     sessionStorage.removeItem(USER_CACHE_KEY);
                     renderAuthUI(null);
+                    setAdminMode(false);
 
                     isCloudMode = false;
                     updateCloudStatus('offline', '未偵測到帳戶 (離線模式)');
@@ -536,9 +637,19 @@ document.addEventListener('DOMContentLoaded', () => {
         return charList.map((item) => (item.count > 1 ? `${item.name}*${item.count}` : item.name)).join('、');
     }
 
+    // 整理所有紀錄：活動名稱 (空白整理 + 舊名稱自動對應新名稱) 與獲得角色格式
     function normalizeAllRecords() {
+        const aliasMap = buildAliasMap();
         let hasChanges = false;
+
         records.forEach((record) => {
+            const cleanedEvent = normalizeName(record.event);
+            const canonicalEvent = aliasMap.get(cleanedEvent) || cleanedEvent;
+            if (record.event !== canonicalEvent) {
+                record.event = canonicalEvent;
+                hasChanges = true;
+            }
+
             const originalNotes = record.notes || '';
             const formattedNotes = formatCharacterString(originalNotes, record.tag);
             if (originalNotes !== formattedNotes) {
@@ -559,8 +670,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if ((tag === 'free' || tag === 'orb') && pullsInput.value === '') pullsInput.value = 0;
     }
 
-    const isValidEvent = (e) => e && typeof e === 'object' && typeof e.event === 'string' && e.event;
-
+    // 合併活動 (已存在的不覆蓋)，回傳新增筆數
     function mergeNewEvents(newEvents) {
         if (!Array.isArray(newEvents)) {
             showToast('合併失敗：輸入的活動列表格式不正確。', 'error');
@@ -569,9 +679,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const existingEventsSet = new Set(masterEvents.map((e) => e.event));
         let newEventsAdded = 0;
         newEvents.forEach((newEvent) => {
-            if (isValidEvent(newEvent) && !existingEventsSet.has(newEvent.event)) {
-                masterEvents.push(newEvent);
-                existingEventsSet.add(newEvent.event);
+            if (!isValidEvent(newEvent)) return;
+            const normalized = normalizeMasterEvent(newEvent);
+            if (!existingEventsSet.has(normalized.event)) {
+                masterEvents.push(normalized);
+                existingEventsSet.add(normalized.event);
                 newEventsAdded++;
             }
         });
@@ -581,23 +693,52 @@ document.addEventListener('DOMContentLoaded', () => {
         return newEventsAdded;
     }
 
-    async function loadMasterEvents(sourceUrl = 'events.json') {
+    // 載入靜態的 events.json (備援 / 初始資料)
+    async function loadStaticEvents() {
         try {
-            const fetchUrl = sourceUrl.startsWith('http') ? `${sourceUrl}?t=${Date.now()}` : sourceUrl;
-            const response = await fetch(fetchUrl);
+            const response = await fetch('events.json');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
-            if (Array.isArray(data)) {
-                masterEvents = data.filter(isValidEvent);
-                dateFilterDirty = true;
-                updateEventFormSelect(records);
-                if (sourceUrl !== 'events.json') showToast('活動清單已成功同步！', 'success');
-            } else {
-                throw new Error('載入的資料格式不正確');
-            }
+            if (!Array.isArray(data)) throw new Error('載入的資料格式不正確');
+            masterEvents = dedupeMasterEvents(data.filter(isValidEvent).map(normalizeMasterEvent));
+            dateFilterDirty = true;
+            updateEventFormSelect(records);
         } catch (error) {
-            console.warn(`無法載入活動清單 (${sourceUrl}):`, error);
+            console.warn('無法載入活動清單 (events.json):', error);
         }
+    }
+
+    // 讀取雲端活動清單；沒有資料 (或讀取失敗) 回傳 null
+    async function loadMasterEventsFromCloud() {
+        if (!(await waitForFirebaseServices())) return null;
+        const snap = await window.getDoc(getSharedEventsRef());
+        if (!snap.exists()) return null;
+        const list = snap.data().events;
+        if (!Array.isArray(list) || list.length === 0) return null;
+        return dedupeMasterEvents(list.filter(isValidEvent).map(normalizeMasterEvent));
+    }
+
+    // 用雲端活動清單取代目前清單，並讓紀錄套用舊名稱對照
+    async function refreshMasterEventsFromCloud() {
+        try {
+            const list = await loadMasterEventsFromCloud();
+            if (!list) return false;
+            masterEvents = list;
+            dateFilterDirty = true;
+            normalizeAllRecords();
+            renderAll();
+            return true;
+        } catch (error) {
+            console.warn('[CLOUD] 無法載入雲端活動清單，使用 events.json', error);
+            return false;
+        }
+    }
+
+    // 管理員：把目前的活動清單寫入雲端
+    async function saveMasterEventsToCloud() {
+        if (!isAdmin || !currentUser) throw new Error('需要管理員權限');
+        const events = JSON.parse(JSON.stringify(masterEvents));
+        await window.setDoc(getSharedEventsRef(), { events, updatedAt: window.serverTimestamp() });
     }
 
 
@@ -1074,7 +1215,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let event;
         if (isAddingNewEvent || editMode) {
-            event = eventInput.value.trim();
+            event = normalizeName(eventInput.value);
         } else {
             event = eventSelect.value;
             if (event === '--new--') { showToast('請點擊"編輯"按鈕來輸入新活動名稱！', 'error'); return; }
@@ -1240,15 +1381,6 @@ document.addEventListener('DOMContentLoaded', () => {
             reader.onload = (event) => {
                 try {
                     const jsonData = JSON.parse(event.target.result);
-
-                    // 管理員金鑰檔
-                    if (jsonData.enableAdmin === true) {
-                        document.body.classList.add('is-admin');
-                        adminBadge.style.display = 'inline-block';
-                        showToast('管理員模式已啟用！', 'success');
-                        return;
-                    }
-
                     if (!Array.isArray(jsonData)) throw new Error('格式錯誤');
 
                     const dropped = setRecords(jsonData);
@@ -1269,11 +1401,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function bindEventListEvents() {
+    // 一般使用者：同步活動清單 (優先使用雲端清單，沒有則合併遠端 events.json)
+    function bindSyncEvents() {
         syncRemoteEventsBtn.addEventListener('click', async () => {
-            if (!confirm('確定要從遠端同步活動清單嗎？遠端新增的活動將與本地清單合併。')) return;
+            if (!confirm('確定要從遠端同步活動清單嗎？')) return;
             showToast('正在同步...', 'info');
             try {
+                if (await refreshMasterEventsFromCloud()) {
+                    showToast('活動清單已成功同步！', 'success');
+                    return;
+                }
                 const response = await fetch(`${REMOTE_EVENTS_URL}?t=${Date.now()}`);
                 if (!response.ok) throw new Error('HTTP error!');
                 const newEvents = await response.json();
@@ -1283,18 +1420,127 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('同步失敗，請檢查網路。', 'error');
             }
         });
+    }
+
+    // 管理員：活動清單管理
+    async function handleSaveEventToMaster() {
+        if (!requireAdmin()) return;
+
+        const rawName = (isAddingNewEvent || editMode) ? eventInput.value : eventSelect.value;
+        const name = normalizeName(rawName);
+        if (!name || name === '--new--') { showToast('請先選擇或輸入有效的活動名稱！', 'error'); return; }
+        const date = dateInput.value;
+        if (!date) { showToast('請選擇日期！', 'error'); return; }
+        const tag = tagSelect.value === 'none' ? '' : tagSelect.value;
+
+        // 編輯模式下名稱有變動 = 更名；舊名稱會記在 aliases，讓所有人的紀錄自動對應到新名稱
+        const oldName = (editMode && editEventName) ? normalizeName(editEventName) : null;
+        const isRename = !!oldName && oldName !== name;
+
+        if (isRename) {
+            if (masterEvents.some((e) => e.event === name)) {
+                showToast('清單中已有同名活動，無法更名。', 'error');
+                return;
+            }
+            if (!confirm(`將活動「${oldName}」更名為「${name}」？\n所有使用者的紀錄會在下次開啟頁面時自動對應到新名稱。`)) return;
+        }
+
+        let entry = masterEvents.find((e) => e.event === (isRename ? oldName : name));
+        if (entry) {
+            const aliases = new Set(entry.aliases || []);
+            if (isRename) {
+                aliases.add(oldName);
+                entry.event = name;
+            }
+            entry.date = date;
+            entry.tag = tag;
+            if (aliases.size > 0) entry.aliases = [...aliases];
+            else delete entry.aliases;
+        } else {
+            entry = { event: name, date, tag };
+            if (isRename) entry.aliases = [oldName];
+            masterEvents.push(entry);
+        }
+        masterEvents.sort((a, b) => compareEventNamesByDate(a.event, b.event));
+        dateFilterDirty = true;
+
+        try {
+            await saveMasterEventsToCloud();
+            normalizeAllRecords();
+            resetFormState();
+            renderAll();
+            showToast(isRename ? `已更名並儲存：${name}` : `已儲存到雲端活動清單：${name}`, 'success');
+        } catch (error) {
+            console.error('[ADMIN] 儲存活動失敗', error);
+            await refreshMasterEventsFromCloud();
+            showToast('儲存失敗，請檢查管理員權限或網路。', 'error');
+        }
+    }
+
+    async function handleDeleteEventFromMaster() {
+        if (!requireAdmin()) return;
+
+        const name = normalizeName(eventSelect.value);
+        if (!name || name === '--new--') { showToast('請先選擇一個活動！', 'error'); return; }
+        if (!masterEvents.some((e) => e.event === name)) { showToast('此活動不在雲端活動清單中。', 'info'); return; }
+        if (!confirm(`確定要從雲端活動清單移除「${name}」嗎？\n（不會刪除任何人的抽卡紀錄）`)) return;
+
+        masterEvents = masterEvents.filter((e) => e.event !== name);
+        dateFilterDirty = true;
+
+        try {
+            await saveMasterEventsToCloud();
+            resetFormState();
+            renderAll();
+            showToast(`已從清單移除：${name}`, 'success');
+        } catch (error) {
+            console.error('[ADMIN] 刪除活動失敗', error);
+            await refreshMasterEventsFromCloud();
+            showToast('刪除失敗，請檢查管理員權限或網路。', 'error');
+        }
+    }
+
+    // 把 events.json 的活動合併進雲端清單 (首次建立雲端清單時使用，已存在的活動不會被覆蓋)
+    async function handleSeedEvents() {
+        if (!requireAdmin()) return;
+        if (!confirm('要把 events.json 的活動合併進雲端活動清單嗎？\n（已存在的活動不會被覆蓋）')) return;
+
+        try {
+            const response = await fetch(`events.json?t=${Date.now()}`);
+            if (!response.ok) throw new Error('HTTP error!');
+            const data = await response.json();
+            const addedCount = mergeNewEvents(data);
+            await saveMasterEventsToCloud();
+            normalizeAllRecords();
+            renderAll();
+            showToast(`已寫入雲端清單，共 ${masterEvents.length} 筆 (新增 ${addedCount} 筆)。`, 'success');
+        } catch (error) {
+            console.error('[ADMIN] 匯入 events.json 失敗', error);
+            showToast('匯入失敗，請檢查管理員權限或網路。', 'error');
+        }
+    }
+
+    function bindAdminEvents() {
+        saveEventMasterBtn.addEventListener('click', handleSaveEventToMaster);
+        deleteEventMasterBtn.addEventListener('click', handleDeleteEventFromMaster);
+        seedEventsBtn.addEventListener('click', handleSeedEvents);
 
         importEventsFileBtn.addEventListener('click', () => importEventsFileInput.click());
         importEventsFileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = (event) => {
+            reader.onload = async (event) => {
                 try {
                     const importedData = JSON.parse(event.target.result);
                     if (!Array.isArray(importedData)) throw new Error('格式錯誤');
                     const addedCount = mergeNewEvents(importedData);
-                    showToast(`匯入成功！新增 ${addedCount} 筆活動。`, 'success');
+                    if (addedCount > 0 && isAdmin) {
+                        await saveMasterEventsToCloud();
+                        showToast(`匯入成功！新增 ${addedCount} 筆活動，並已同步到雲端清單。`, 'success');
+                    } else {
+                        showToast(`匯入成功！新增 ${addedCount} 筆活動。`, 'success');
+                    }
                 } catch (err) {
                     showToast(`匯入失敗：${err.message}`, 'error');
                 } finally {
@@ -1304,7 +1550,7 @@ document.addEventListener('DOMContentLoaded', () => {
             reader.readAsText(file);
         });
 
-        // 匯出單一活動模板 (管理員)
+        // 匯出單一活動模板
         exportEventJsonButton.addEventListener('click', () => {
             const selectedEventName = eventSelect.value;
             if (!selectedEventName || selectedEventName === '--new--') {
@@ -1318,12 +1564,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 date: eventToExport ? eventToExport.date : dateInput.value,
                 tag: eventToExport ? eventToExport.tag : (tagValue !== 'none' ? tagValue : '')
             };
+            if (eventToExport && eventToExport.aliases) exportData.aliases = eventToExport.aliases;
             const eventShortName = selectedEventName.substring(0, 20).replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
             downloadJson([exportData], `event_${eventShortName}_template.json`);
             showToast(`已匯出活動模板：${selectedEventName}`, 'info');
         });
 
-        // 匯出完整活動清單 (管理員)：缺少標籤或日期的活動，嘗試從紀錄補齊
+        // 匯出完整活動清單：缺少標籤或日期的活動，嘗試從紀錄補齊 (可用來更新 repo 裡的 events.json 備援)
         exportAllEventsBtn.addEventListener('click', () => {
             if (!masterEvents || masterEvents.length === 0) {
                 showToast('目前沒有活動資料可匯出！', 'error');
@@ -1350,7 +1597,8 @@ document.addEventListener('DOMContentLoaded', () => {
         bindFormEvents();
         bindFilterEvents();
         bindDataEvents();
-        bindEventListEvents();
+        bindSyncEvents();
+        bindAdminEvents();
     }
 
 
@@ -1362,7 +1610,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loadRecords();
         initFirebaseAuth();
 
-        await loadMasterEvents();
+        await loadStaticEvents();
         renderAll();
         resetFormState();
         gachaFieldset.disabled = true;
@@ -1370,6 +1618,9 @@ document.addEventListener('DOMContentLoaded', () => {
         modeToggleBtn.classList.add('btn-outline-secondary');
         modeToggleBtn.innerHTML = '<i class="bi bi-eye"></i> 檢視模式 (點此編輯)';
         updateAccountEditBtnState();
+
+        // 雲端活動清單 (有資料時取代 events.json)，不阻塞畫面
+        refreshMasterEventsFromCloud();
     }
 
     checkAuthCache();

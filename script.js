@@ -117,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentUser = null;
     let isCloudMode = false;
+    let isCloudLoading = false;   // 讀取雲端紀錄期間不寫入雲端，避免本機舊紀錄覆蓋雲端
     let isAdmin = false;
     let saveTimeout = null;
     let hasPendingCloudSave = false;
@@ -407,6 +408,18 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     }
 
+    // 登出後不把雲端紀錄留在畫面、LocalStorage 與 sessionStorage 上
+    function clearLocalCopyOfCloudRecords(uid) {
+        clearTimeout(saveTimeout);
+        hasPendingCloudSave = false;
+        sessionStorage.removeItem(DATA_CACHE_PREFIX + uid);
+        localStorage.removeItem(LOCAL_RECORDS_KEY);
+        records = [];
+        dateFilterDirty = true;
+        renderAll();
+        resetFormState();
+    }
+
     function applyLoadedRecords(list) {
         setRecords(list);
         normalizeAllRecords();
@@ -423,6 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // 有資料快取就不再讀取 Firestore
             const cachedRecords = readCachedRecords(uid);
             if (cachedRecords) {
+                isCloudLoading = false;
                 console.log('[Optimization] 6.1: Data Cache Hit! Skipping Firestore read.');
                 applyLoadedRecords(cachedRecords);
                 updateCloudStatus('online', '雲端就緒 (快取載入)');
@@ -433,6 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             console.log('[Optimization] 6.1: No Cache found, fetching from Firestore...');
             const docSnap = await window.getDoc(getCloudDocRef());
+            isCloudLoading = false;
 
             if (docSnap.exists()) {
                 const data = docSnap.data();
@@ -462,6 +477,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             rememberUser(uid);
         } catch (error) {
+            // 讀不到雲端時改回離線模式，避免之後的編輯以本機紀錄覆蓋雲端
+            isCloudLoading = false;
+            isCloudMode = false;
             console.error('[CLOUD] Load failed:', error);
             updateCloudStatus('offline', '雲端載入失敗');
             showToast('無法載入雲端資料，請檢查權限或網路。', 'error');
@@ -499,6 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function initFirebaseAuth(retries = 0) {
         if (window.firebaseAuth) {
             window.onAuthStateChanged(window.firebaseAuth, async (user) => {
+                const previousUser = currentUser;
                 currentUser = user;
                 if (user) {
                     const userData = { uid: user.uid, displayName: user.displayName, photoURL: user.photoURL };
@@ -506,6 +525,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     renderAuthUI(userData);
 
                     isCloudMode = true;
+                    isCloudLoading = true;
                     updateCloudStatus('saving', '正在從雲端載入...');
                     await Promise.all([loadFromCloud(), checkAdminStatus(user)]);
                 } else {
@@ -514,7 +534,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     setAdminMode(false);
 
                     isCloudMode = false;
+                    isCloudLoading = false;
                     updateCloudStatus('offline', '未偵測到帳戶 (離線模式)');
+
+                    // 在本頁登出 (含其他分頁登出)：清除留在這台電腦上的雲端紀錄
+                    // 一開始就未登入的離線使用者不受影響
+                    if (previousUser) clearLocalCopyOfCloudRecords(previousUser.uid);
                 }
             });
 
@@ -527,7 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     await window.signOut(window.firebaseAuth);
                     sessionStorage.removeItem(USER_CACHE_KEY);
-                    showToast('已登出', 'info');
+                    showToast('已登出，本機上的雲端紀錄已清除', 'info');
                 } catch (error) {
                     console.error(error);
                 }
@@ -560,7 +585,8 @@ document.addEventListener('DOMContentLoaded', () => {
         dateFilterDirty = true;
         localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
 
-        if (isCloudMode && currentUser) {
+        // 雲端載入中：只存本機，載入完成後以雲端資料為準
+        if (isCloudMode && currentUser && !isCloudLoading) {
             updateCloudStatus('saving', '儲存中...');
             hasPendingCloudSave = true;
             clearTimeout(saveTimeout);
@@ -1379,6 +1405,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const jsonData = JSON.parse(event.target.result);
                     if (!Array.isArray(jsonData)) throw new Error('格式錯誤');
+
+                    const cloudNote = (isCloudMode && currentUser) ? '\n登入狀態下，雲端的紀錄也會一併被取代。' : '';
+                    if (records.length > 0 && !confirm(
+                        `載入「${file.name}」（${jsonData.length} 筆）會取代目前的 ${records.length} 筆紀錄，確定嗎？${cloudNote}`
+                    )) return;
 
                     const dropped = setRecords(jsonData);
                     normalizeAllRecords();

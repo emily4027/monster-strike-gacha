@@ -25,9 +25,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. 設定與常數
     // =====================================================
     const USER_CACHE_KEY = 'gacha_user_cache_v1';        // sessionStorage：登入者資訊
-    const DATA_CACHE_PREFIX = 'gacha_cloud_data_';       // sessionStorage：雲端資料快取
+    const OLD_DATA_CACHE_PREFIX = 'gacha_cloud_data_';   // sessionStorage：舊版的雲端資料快取 (已停用，只用來清除)
     const LOCAL_RECORDS_KEY = 'gachaRecords';            // localStorage：本機紀錄
     const LAST_UID_KEY = 'gacha_last_uid_v1';            // localStorage：本機紀錄最後一次對應的雲端帳號
+    const UNSYNCED_KEY = 'gacha_unsynced_v1';            // localStorage：本機有還沒存到雲端的修改
 
     // Firestore 路徑
     const SHARED_COLLECTION = 'shared';                  // shared/events：所有人可讀、管理員可寫
@@ -112,6 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let editMode = false;
     let editEventName = null;
     let editingRecordId = null;   // 從表格按「編輯」時，記錄要編輯的那一筆 id
+    let editingAccountOriginal = null;   // 編輯模式下修改帳號名稱時，原本的帳號
     let isAddingNewAccount = false;
     let isAddingNewEvent = false;
 
@@ -123,8 +125,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let hasPendingCloudSave = false;
     let toastTimer = null;
     let dateFilterDirty = true;   // 紀錄或活動清單有變動時，日期篩選才需要重建
-
-    const sampleData = [];
+    // 上次讀取 / 寫入時雲端紀錄的 lastUpdated (毫秒)。存檔時雲端的值不一樣 = 其他裝置改過
+    let knownCloudUpdatedAt = null;
+    // 雲端活動清單是否已讀到 (或確認雲端還沒有清單)；讀到之前不開放管理員寫入
+    let masterEventsReady = false;
 
 
     // =====================================================
@@ -199,6 +203,26 @@ document.addEventListener('DOMContentLoaded', () => {
         return map;
     }
 
+    // 把 2024/3/5、2024.03.05 這類寫法整理成 YYYY-MM-DD；無法辨識時原樣回傳
+    function normalizeDate(value) {
+        if (typeof value !== 'string') return value;
+        const match = value.trim().match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/);
+        return match ? `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}` : value;
+    }
+
+    // 紀錄日期必須是真實存在的 YYYY-MM-DD (<input type="date"> 的格式)
+    function isValidDate(value) {
+        if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+        const [y, m, d] = value.split('-').map(Number);
+        const date = new Date(Date.UTC(y, m - 1, d));
+        return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+    }
+
+    // 找出「同日、同活動、同帳號」的紀錄 (excludeIds 內的紀錄不算)
+    function findDuplicateRecord({ date, event, account }, excludeIds = []) {
+        return records.find((r) => !excludeIds.includes(r.id) && r.date === date && r.event === event && r.account === account) || null;
+    }
+
     // 驗證並整理紀錄：略過格式不正確的項目，補齊欄位，確保 id 為不重複的數字
     function sanitizeRecords(list) {
         const seenIds = new Set();
@@ -206,9 +230,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const clean = [];
         let dropped = 0;
 
-        list.forEach((item) => {
+        list.forEach((rawItem) => {
+            const item = rawItem && typeof rawItem === 'object' ? { ...rawItem, date: normalizeDate(rawItem.date) } : rawItem;
             const valid = item && typeof item === 'object'
-                && typeof item.date === 'string' && item.date
+                && isValidDate(item.date)
                 && typeof item.event === 'string' && normalizeName(item.event)
                 && typeof item.account === 'string' && item.account;
             if (!valid) {
@@ -358,39 +383,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const getSharedEventsRef = () => window.doc(window.db, SHARED_COLLECTION, EVENTS_DOC_ID);
 
-    function cacheRecords(uid) {
-        sessionStorage.setItem(DATA_CACHE_PREFIX + uid, JSON.stringify({ records, cachedAt: Date.now() }));
-    }
+    // 雲端文件的 lastUpdated 轉成毫秒 (沒有則為 null)
+    const updatedAtOf = (data) =>
+        (data && data.lastUpdated && typeof data.lastUpdated.toMillis === 'function') ? data.lastUpdated.toMillis() : null;
 
-    function readCachedRecords(uid) {
-        const cacheKey = DATA_CACHE_PREFIX + uid;
-        const cachedDataStr = sessionStorage.getItem(cacheKey);
-        if (!cachedDataStr) return null;
-        try {
-            const cachedData = JSON.parse(cachedDataStr);
-            if (cachedData && Array.isArray(cachedData.records)) return cachedData.records;
-        } catch (e) {
-            console.warn('Data cache corrupted, falling back to network.', e);
-        }
-        sessionStorage.removeItem(cacheKey);
-        return null;
-    }
+    // 「本機有還沒存到雲端的修改」標記：存檔時設定，雲端存檔成功後清除
+    const setUnsynced = (flag) => (flag ? localStorage.setItem(UNSYNCED_KEY, '1') : localStorage.removeItem(UNSYNCED_KEY));
+    const hasUnsynced = () => localStorage.getItem(UNSYNCED_KEY) === '1';
 
+    // 寫入雲端前先確認：雲端的 lastUpdated 和上次看到的一樣才寫入。
+    // 不一樣代表其他裝置 (或其他分頁) 改過，這次不寫入，改為重新載入雲端紀錄，避免覆蓋別人的修改。
     async function saveToCloud() {
         hasPendingCloudSave = false;
-        if (!currentUser) return;
+        if (!currentUser || !isCloudMode || isCloudLoading) return;
+        const uid = currentUser.uid;
         try {
-            const { setDoc, serverTimestamp } = window;
-            if (!window.doc || !setDoc || !serverTimestamp) throw new Error('Firebase SDK functions missing');
+            if (!window.runTransaction) throw new Error('Firebase SDK functions missing');
+            const ref = getCloudDocRef();
+            const stamp = Date.now();
+            const conflict = await window.runTransaction(window.db, async (tx) => {
+                const snap = await tx.get(ref);
+                const remoteUpdatedAt = snap.exists() ? updatedAtOf(snap.data()) : null;
+                if (remoteUpdatedAt !== knownCloudUpdatedAt) return true;
+                tx.set(ref, { records, lastUpdated: new Date(stamp) }, { merge: true });
+                return false;
+            });
+            if (!currentUser || currentUser.uid !== uid) return;   // 存檔期間已登出或換帳號
 
-            await setDoc(getCloudDocRef(), { records, lastUpdated: serverTimestamp() }, { merge: true });
-            cacheRecords(currentUser.uid);
-
+            if (conflict) {
+                console.warn('[CLOUD] 雲端已被其他裝置更新，改為重新載入');
+                await loadFromCloud();
+                showToast('其他裝置剛更新過紀錄，已重新載入雲端資料，請再做一次剛才的修改。', 'error');
+                return;
+            }
+            knownCloudUpdatedAt = stamp;
+            setUnsynced(false);
             updateCloudStatus('online', '雲端就緒 (已同步)');
             console.log('[CLOUD] Auto-saved successfully.');
         } catch (error) {
             console.error('[CLOUD] Auto-save failed:', error);
-            updateCloudStatus('offline', '儲存失敗 (權限不足)');
+            updateCloudStatus('offline', '儲存失敗 (修改先存在本機)');
         }
     }
 
@@ -408,12 +440,14 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     }
 
-    // 登出後不把雲端紀錄留在畫面、LocalStorage 與 sessionStorage 上
+    // 登出後不把雲端紀錄留在畫面與 LocalStorage 上
     function clearLocalCopyOfCloudRecords(uid) {
         clearTimeout(saveTimeout);
         hasPendingCloudSave = false;
-        sessionStorage.removeItem(DATA_CACHE_PREFIX + uid);
+        sessionStorage.removeItem(OLD_DATA_CACHE_PREFIX + uid);
         localStorage.removeItem(LOCAL_RECORDS_KEY);
+        setUnsynced(false);
+        knownCloudUpdatedAt = null;
         records = [];
         dateFilterDirty = true;
         renderAll();
@@ -421,44 +455,45 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function applyLoadedRecords(list) {
-        setRecords(list);
+        const dropped = setRecords(list);
         normalizeAllRecords();
         localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
         renderAll();
         resetFormState();
+        return dropped;
     }
 
+    // 讀取雲端紀錄 (不使用快取：快取會讓其他裝置的修改在這個分頁看不到，之後存檔又把它們覆蓋)
     async function loadFromCloud() {
         if (!currentUser) return;
         const uid = currentUser.uid;
+        sessionStorage.removeItem(OLD_DATA_CACHE_PREFIX + uid);
 
         try {
-            // 有資料快取就不再讀取 Firestore
-            const cachedRecords = readCachedRecords(uid);
-            if (cachedRecords) {
-                isCloudLoading = false;
-                console.log('[Optimization] 6.1: Data Cache Hit! Skipping Firestore read.');
-                applyLoadedRecords(cachedRecords);
-                updateCloudStatus('online', '雲端就緒 (快取載入)');
-                showToast('已載入雲端紀錄 (快取)', 'success');
-                rememberUser(uid);
-                return;
-            }
-
-            console.log('[Optimization] 6.1: No Cache found, fetching from Firestore...');
             const docSnap = await window.getDoc(getCloudDocRef());
+            if (!currentUser || currentUser.uid !== uid) return;
             isCloudLoading = false;
 
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                if (data.records && Array.isArray(data.records)) {
-                    applyLoadedRecords(data.records);
-                    cacheRecords(uid);
-                    updateCloudStatus('online', '雲端就緒 (已載入)');
-                    showToast('已載入雲端紀錄', 'success');
+            const data = docSnap.exists() ? docSnap.data() : null;
+            knownCloudUpdatedAt = updatedAtOf(data);
+            const cloudRecords = data && Array.isArray(data.records) ? data.records : [];
+
+            if (cloudRecords.length > 0) {
+                // 以雲端為準；本機若有還沒存到雲端、而且和雲端不同的紀錄，先下載備份
+                const unsyncedLocal = hasUnsynced() && records.length > 0 ? records : null;
+                setUnsynced(false);
+                const dropped = applyLoadedRecords(cloudRecords);
+
+                if (dropped > 0) {
+                    downloadJson(cloudRecords, `gacha_cloud_raw_${new Date().toISOString().split('T')[0]}.json`);
+                    showToast(`雲端有 ${dropped} 筆紀錄格式不正確已略過，原始資料已下載備份`, 'error');
+                } else if (unsyncedLocal && JSON.stringify(unsyncedLocal) !== JSON.stringify(records)) {
+                    downloadJson(unsyncedLocal, `gacha_local_backup_${new Date().toISOString().split('T')[0]}.json`);
+                    showToast('本機有還沒存到雲端的紀錄，已下載備份，並改用雲端紀錄。', 'info');
                 } else {
-                    updateCloudStatus('online', '雲端就緒 (尚無資料)');
+                    showToast('已載入雲端紀錄', 'success');
                 }
+                updateCloudStatus('online', '雲端就緒 (已載入)');
             } else if (records.length > 0) {
                 if (confirmUploadLocalRecords(uid)) {
                     saveData();
@@ -467,6 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     records = [];
                     dateFilterDirty = true;
                     localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
+                    setUnsynced(false);
                     renderAll();
                     resetFormState();
                     updateCloudStatus('online', '雲端就緒 (尚無資料)');
@@ -550,6 +586,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         clearTimeout(saveTimeout);
                         await saveToCloud();
                     }
+                    // 仍有修改沒存到雲端 (例如雲端連線失敗)：登出會清除本機紀錄，先讓使用者備份
+                    if (hasUnsynced() && records.length > 0) {
+                        if (!confirm(
+                            '有修改還沒存到雲端，登出後會從這台電腦清除。\n\n' +
+                            '按「確定」：先下載備份再登出。\n按「取消」：不登出。'
+                        )) return;
+                        downloadJson(records, `gacha_records_${new Date().toISOString().split('T')[0]}.json`);
+                    }
                     await window.signOut(window.firebaseAuth);
                     sessionStorage.removeItem(USER_CACHE_KEY);
                     showToast('已登出，本機上的雲端紀錄已清除', 'info');
@@ -584,6 +628,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function saveData() {
         dateFilterDirty = true;
         localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
+        setUnsynced(true);   // 雲端存檔成功後才清除
 
         // 雲端載入中：只存本機，載入完成後以雲端資料為準
         if (isCloudMode && currentUser && !isCloudLoading) {
@@ -612,8 +657,8 @@ document.addEventListener('DOMContentLoaded', () => {
             setRecords(stored);
             normalizeAllRecords();
         } else {
-            records = [...sampleData];
-            saveData();
+            records = [];
+            localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
         }
     }
 
@@ -730,9 +775,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 讀取雲端活動清單；沒有資料 (或讀取失敗) 回傳 null
+    // 讀取雲端活動清單；雲端沒有清單時回傳 null，讀取失敗時丟出錯誤
     async function loadMasterEventsFromCloud() {
-        if (!(await waitForFirebaseServices())) return null;
+        if (!(await waitForFirebaseServices())) throw new Error('Firebase not ready');
         const snap = await window.getDoc(getSharedEventsRef());
         if (!snap.exists()) return null;
         const list = snap.data().events;
@@ -740,20 +785,39 @@ document.addEventListener('DOMContentLoaded', () => {
         return dedupeMasterEvents(list.filter(isValidEvent).map(normalizeMasterEvent));
     }
 
-    // 用雲端活動清單取代目前清單，並讓紀錄套用舊名稱對照
+    // 用雲端活動清單取代目前清單，並讓紀錄套用舊名稱對照。
+    // 讀到清單 (或確認雲端還沒有清單) 才開放管理員寫入，避免以 events.json 備援覆蓋雲端清單。
     async function refreshMasterEventsFromCloud() {
         try {
             const list = await loadMasterEventsFromCloud();
-            if (!list) return false;
+            masterEventsReady = true;
+            if (!list) return true;
             masterEvents = list;
             dateFilterDirty = true;
             normalizeAllRecords();
             renderAll();
             return true;
         } catch (error) {
+            masterEventsReady = false;
             console.warn('[CLOUD] 無法載入雲端活動清單，使用 events.json', error);
             return false;
+        } finally {
+            updateAdminButtonsState();
         }
+    }
+
+    function updateAdminButtonsState() {
+        [saveEventMasterBtn, deleteEventMasterBtn, importEventsFileBtn].forEach((btn) => {
+            btn.disabled = !masterEventsReady;
+            btn.title = masterEventsReady ? '' : '雲端活動清單尚未載入，暫時無法修改';
+        });
+    }
+
+    // 管理員修改清單前，先重新讀取最新的雲端清單 (其他管理員可能剛改過)
+    async function prepareMasterEventsForWrite() {
+        if (await refreshMasterEventsFromCloud()) return true;
+        showToast('無法讀取雲端活動清單，為避免覆蓋雲端資料，請稍後再試。', 'error');
+        return false;
     }
 
     // 管理員：把目前的活動清單寫入雲端
@@ -863,7 +927,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const year = data.firstDate.split('-')[0];
                 const month = parseInt(data.firstDate.split('-')[1], 10);
                 const displayEventName = getCleanEventName(event, data.firstDate);
-                return `<p><span class="text-muted small me-2" style="display: inline-block; width: 75px;">${year}年 ${month}月</span> ${escapeHtml(displayEventName)}: <strong>${data.pulls.toLocaleString()}</strong> 抽</p>`;
+                return `<p><span class="text-muted small me-2" style="display: inline-block; width: 75px;">${escapeHtml(year)}年 ${escapeHtml(month)}月</span> ${escapeHtml(displayEventName)}: <strong>${data.pulls.toLocaleString()}</strong> 抽</p>`;
             }).join('');
         }
         eventStatsDiv.appendChild(scrollableContent);
@@ -1052,6 +1116,7 @@ document.addEventListener('DOMContentLoaded', () => {
         accountSelectGroup.style.display = 'flex';
         accountInputGroup.style.display = 'none';
         isAddingNewAccount = false;
+        editingAccountOriginal = null;
         updateAccountEditBtnState();
     }
 
@@ -1143,6 +1208,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             showAccountInputUI();
             accountInput.value = accountName;
+            // 編輯模式下修改帳號名稱：記住原本的帳號，儲存時把「這一筆」移到新帳號下
+            if (editMode) editingAccountOriginal = accountName;
         }
     }
 
@@ -1254,6 +1321,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (editMode) {
             if (account === '--batch--') {
+                // 改名或改日期後，會不會和其他紀錄變成「同日、同活動、同帳號」
+                const affected = records.filter((r) => r.event === editEventName);
+                const affectedIds = affected.map((r) => r.id);
+                const conflicts = [...new Set(affected
+                    .filter((r, i) => affected.findIndex((o) => o.account === r.account) !== i
+                        || findDuplicateRecord({ date, event, account: r.account }, affectedIds))
+                    .map((r) => r.account))];
+                if (conflicts.length > 0) {
+                    showToast(`無法更新：${conflicts.join('、')} 會出現同一天、同一活動的重複紀錄。`, 'error');
+                    return;
+                }
                 let updatedCount = 0;
                 records.forEach((r) => {
                     if (r.event === editEventName) {
@@ -1265,8 +1343,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 showToast(`已批次更新 ${updatedCount} 筆紀錄！`, 'success');
             } else {
-                const recordToUpdate = findRecordForEdit(account);
+                // 帳號名稱被改過時，用原本的帳號找出要更新的那一筆 (只把這一筆移到新帳號下)
+                const sourceAccount = (isAddingNewAccount && editingAccountOriginal) ? editingAccountOriginal : account;
+                const recordToUpdate = findRecordForEdit(sourceAccount);
+                if (findDuplicateRecord({ date, event, account }, recordToUpdate ? [recordToUpdate.id] : [])) {
+                    showToast(`錯誤：${account} 在 ${date} 已有這個活動的紀錄。`, 'error');
+                    return;
+                }
                 if (recordToUpdate) {
+                    recordToUpdate.account = account;
                     recordToUpdate.event = event;
                     recordToUpdate.date = date;
                     recordToUpdate.tag = tag;
@@ -1279,8 +1364,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         } else {
-            const existingRecord = records.find((r) => r.date === date && r.event === event && r.account === account);
-            if (existingRecord) {
+            if (findDuplicateRecord({ date, event, account })) {
                 showToast('錯誤：該筆紀錄已存在。', 'error');
                 handleEventSelectChange();
                 return;
@@ -1445,6 +1529,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const oldName = (editMode && editEventName) ? normalizeName(editEventName) : null;
         const isRename = !!oldName && oldName !== name;
 
+        if (!(await prepareMasterEventsForWrite())) return;
+
         if (isRename) {
             if (masterEvents.some((e) => e.event === name)) {
                 showToast('清單中已有同名活動，無法更名。', 'error');
@@ -1491,6 +1577,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const name = normalizeName(eventSelect.value);
         if (!name || name === '--new--') { showToast('請先選擇一個活動！', 'error'); return; }
+        if (!(await prepareMasterEventsForWrite())) return;
         if (!masterEvents.some((e) => e.event === name)) { showToast('此活動不在雲端活動清單中。', 'info'); return; }
         if (!confirm(`確定要從雲端活動清單移除「${name}」嗎？\n（不會刪除任何人的抽卡紀錄）`)) return;
 
@@ -1528,6 +1615,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const importedData = JSON.parse(event.target.result);
                     if (!Array.isArray(importedData)) throw new Error('格式錯誤');
+                    if (!(await prepareMasterEventsForWrite())) return;
 
                     const addedCount = mergeNewEvents(importedData);
                     await saveMasterEventsToCloud();
@@ -1582,6 +1670,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function init() {
         // 先載入本機紀錄，再啟動登入偵測，避免登入流程搶在本機資料載入之前執行
         loadRecords();
+        updateAdminButtonsState();   // 雲端活動清單讀到之前先停用管理員寫入
         initFirebaseAuth();
 
         await loadStaticEvents();

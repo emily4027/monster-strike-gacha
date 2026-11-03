@@ -24,8 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // =====================================================
     // 1. 設定與常數
     // =====================================================
-    const REMOTE_EVENTS_URL = 'https://emily4027.github.io/monster-strike-gacha/events.json';
-
     const USER_CACHE_KEY = 'gacha_user_cache_v1';        // sessionStorage：登入者資訊
     const DATA_CACHE_PREFIX = 'gacha_cloud_data_';       // sessionStorage：雲端資料快取
     const LOCAL_RECORDS_KEY = 'gachaRecords';            // localStorage：本機紀錄
@@ -86,16 +84,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const exportButton = $('export-data');
     const importButton = $('import-data');
     const importFileInput = $('import-file-input');
-    const syncRemoteEventsBtn = $('sync-remote-events');
 
     // 管理員功能
-    const exportEventJsonButton = $('export-event-json');
     const exportAllEventsBtn = $('export-all-events-btn');
     const importEventsFileBtn = $('import-events-file-btn');
     const importEventsFileInput = $('import-events-file-input');
     const saveEventMasterBtn = $('save-event-master-btn');
     const deleteEventMasterBtn = $('delete-event-master-btn');
-    const seedEventsBtn = $('seed-events-btn');
     const adminBadge = $('admin-badge');
 
     // Firebase 登入
@@ -702,7 +697,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!Array.isArray(data)) throw new Error('載入的資料格式不正確');
             masterEvents = dedupeMasterEvents(data.filter(isValidEvent).map(normalizeMasterEvent));
             dateFilterDirty = true;
-            normalizeAllRecords();
+            normalizeAllRecords();   // 讓舊名稱對照 (aliases) 立即生效
             updateEventFormSelect(records);
         } catch (error) {
             console.warn('無法載入活動清單 (events.json):', error);
@@ -1359,7 +1354,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function bindDataEvents() {
         clearButton.addEventListener('click', () => {
-            if (confirm('警告：這將刪除所有儲存的抽卡紀錄！確定嗎？')) {
+            const cloudNote = (isCloudMode && currentUser) ? '\n登入狀態下，雲端的紀錄也會一併清除。' : '';
+            if (confirm(`警告：這將刪除所有儲存的抽卡紀錄！確定嗎？${cloudNote}`)) {
                 records = [];
                 saveData();
                 renderAll();
@@ -1371,7 +1367,7 @@ document.addEventListener('DOMContentLoaded', () => {
         exportButton.addEventListener('click', () => {
             if (records.length === 0) { showToast('目前沒有資料可匯出', 'info'); return; }
             downloadJson(records, `gacha_records_${new Date().toISOString().split('T')[0]}.json`);
-            showToast('資料已匯出！', 'success');
+            showToast('備份已下載！', 'success');
         });
 
         importButton.addEventListener('click', () => importFileInput.click());
@@ -1389,7 +1385,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     saveData();
                     renderAll();
                     showToast(
-                        dropped > 0 ? `資料已載入，已略過 ${dropped} 筆格式不正確的紀錄` : '資料已成功載入！',
+                        dropped > 0 ? `備份已載入，已略過 ${dropped} 筆格式不正確的紀錄` : '備份已成功載入！',
                         dropped > 0 ? 'info' : 'success'
                     );
                 } catch (err) {
@@ -1402,30 +1398,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 一般使用者：同步活動清單 (優先使用雲端清單，沒有則合併遠端 events.json)
-    function bindSyncEvents() {
-        syncRemoteEventsBtn.addEventListener('click', async () => {
-            if (!confirm('確定要從遠端同步活動清單嗎？')) return;
-            showToast('正在同步...', 'info');
-            try {
-                if (await refreshMasterEventsFromCloud()) {
-                    showToast('活動清單已成功同步！', 'success');
-                    return;
-                }
-                const response = await fetch(`${REMOTE_EVENTS_URL}?t=${Date.now()}`);
-                if (!response.ok) throw new Error('HTTP error!');
-                const newEvents = await response.json();
-                const addedCount = mergeNewEvents(newEvents);
-                showToast(`同步完成！新增 ${addedCount} 筆活動。`, 'success');
-            } catch (error) {
-                showToast('同步失敗，請檢查網路。', 'error');
-            }
-        });
-    }
-
-    // 管理員：活動清單管理
+    // 管理員：在表單旁儲存 / 刪除雲端活動清單中的活動
     async function handleSaveEventToMaster() {
         if (!requireAdmin()) return;
+        if (!globalEditMode) { showToast('請先切換到編輯模式', 'info'); return; }
 
         const rawName = (isAddingNewEvent || editMode) ? eventInput.value : eventSelect.value;
         const name = normalizeName(rawName);
@@ -1480,6 +1456,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function handleDeleteEventFromMaster() {
         if (!requireAdmin()) return;
+        if (!globalEditMode) { showToast('請先切換到編輯模式', 'info'); return; }
 
         const name = normalizeName(eventSelect.value);
         if (!name || name === '--new--') { showToast('請先選擇一個活動！', 'error'); return; }
@@ -1501,32 +1478,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 把 events.json 的活動合併進雲端清單 (首次建立雲端清單時使用，已存在的活動不會被覆蓋)
-    async function handleSeedEvents() {
-        if (!requireAdmin()) return;
-        if (!confirm('要把 events.json 的活動合併進雲端活動清單嗎？\n（已存在的活動不會被覆蓋）')) return;
-
-        try {
-            const response = await fetch(`events.json?t=${Date.now()}`);
-            if (!response.ok) throw new Error('HTTP error!');
-            const data = await response.json();
-            const addedCount = mergeNewEvents(data);
-            await saveMasterEventsToCloud();
-            normalizeAllRecords();
-            renderAll();
-            showToast(`已寫入雲端清單，共 ${masterEvents.length} 筆 (新增 ${addedCount} 筆)。`, 'success');
-        } catch (error) {
-            console.error('[ADMIN] 匯入 events.json 失敗', error);
-            showToast('匯入失敗，請檢查管理員權限或網路。', 'error');
-        }
-    }
-
+    // 管理員：資料管理區的活動清單匯入 / 匯出
     function bindAdminEvents() {
         saveEventMasterBtn.addEventListener('click', handleSaveEventToMaster);
         deleteEventMasterBtn.addEventListener('click', handleDeleteEventFromMaster);
-        seedEventsBtn.addEventListener('click', handleSeedEvents);
 
-        importEventsFileBtn.addEventListener('click', () => importEventsFileInput.click());
+        // 匯入活動清單 (events.json)：合併進目前清單並寫入雲端；已存在的活動不會被覆蓋。
+        // 首次建立雲端清單時，直接選擇 repo 裡的 events.json 即可。
+        importEventsFileBtn.addEventListener('click', () => {
+            if (!requireAdmin()) return;
+            importEventsFileInput.click();
+        });
         importEventsFileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -1535,14 +1497,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const importedData = JSON.parse(event.target.result);
                     if (!Array.isArray(importedData)) throw new Error('格式錯誤');
+
                     const addedCount = mergeNewEvents(importedData);
-                    if (addedCount > 0 && isAdmin) {
-                        await saveMasterEventsToCloud();
-                        showToast(`匯入成功！新增 ${addedCount} 筆活動，並已同步到雲端清單。`, 'success');
-                    } else {
-                        showToast(`匯入成功！新增 ${addedCount} 筆活動。`, 'success');
-                    }
+                    await saveMasterEventsToCloud();
+                    normalizeAllRecords();
+                    renderAll();
+                    showToast(`匯入成功！新增 ${addedCount} 筆活動，雲端清單共 ${masterEvents.length} 筆。`, 'success');
                 } catch (err) {
+                    console.error('[ADMIN] 匯入活動清單失敗', err);
+                    await refreshMasterEventsFromCloud();
                     showToast(`匯入失敗：${err.message}`, 'error');
                 } finally {
                     importEventsFileInput.value = null;
@@ -1551,27 +1514,7 @@ document.addEventListener('DOMContentLoaded', () => {
             reader.readAsText(file);
         });
 
-        // 匯出單一活動模板
-        exportEventJsonButton.addEventListener('click', () => {
-            const selectedEventName = eventSelect.value;
-            if (!selectedEventName || selectedEventName === '--new--') {
-                showToast('請先選擇一個有效的活動！', 'error');
-                return;
-            }
-            const eventToExport = masterEvents.find((e) => e.event === selectedEventName);
-            const tagValue = tagSelect.value;
-            const exportData = {
-                event: selectedEventName,
-                date: eventToExport ? eventToExport.date : dateInput.value,
-                tag: eventToExport ? eventToExport.tag : (tagValue !== 'none' ? tagValue : '')
-            };
-            if (eventToExport && eventToExport.aliases) exportData.aliases = eventToExport.aliases;
-            const eventShortName = selectedEventName.substring(0, 20).replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
-            downloadJson([exportData], `event_${eventShortName}_template.json`);
-            showToast(`已匯出活動模板：${selectedEventName}`, 'info');
-        });
-
-        // 匯出完整活動清單：缺少標籤或日期的活動，嘗試從紀錄補齊 (可用來更新 repo 裡的 events.json 備援)
+        // 匯出活動清單：缺少標籤或日期的活動，嘗試從紀錄補齊 (可用來更新 repo 裡的 events.json 備援)
         exportAllEventsBtn.addEventListener('click', () => {
             if (!masterEvents || masterEvents.length === 0) {
                 showToast('目前沒有活動資料可匯出！', 'error');
@@ -1590,7 +1533,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return newEvt;
             });
             downloadJson(enrichedEvents, `events_list_${new Date().toISOString().split('T')[0]}.json`);
-            showToast(`已匯出並補全完整活動清單！(共 ${enrichedEvents.length} 筆)`, 'success');
+            showToast(`已匯出活動清單！(共 ${enrichedEvents.length} 筆)`, 'success');
         });
     }
 
@@ -1598,7 +1541,6 @@ document.addEventListener('DOMContentLoaded', () => {
         bindFormEvents();
         bindFilterEvents();
         bindDataEvents();
-        bindSyncEvents();
         bindAdminEvents();
     }
 

@@ -211,7 +211,7 @@
                 <div class="btn-group w-100 flex-wrap">
                     <!-- 一般功能 -->
                     <button id="export-data" class="btn btn-success custom-btn m-1" title="儲存目前紀錄為 JSON 檔案"><i class="bi bi-save"></i> 儲存資料</button>
-                    <button id="import-data" class="btn btn-info custom-btn m-1 text-white" title="載入 JSON 檔案或管理員金鑰"><i class="bi bi-folder2-open"></i> 載入資料</button>
+                    <button id="import-data" class="btn btn-info custom-btn m-1 text-white" title="載入 JSON 檔案"><i class="bi bi-folder2-open"></i> 載入資料</button>
                     <button id="sync-remote-events" class="btn btn-primary custom-btn m-1"><i class="bi bi-cloud-download"></i> 同步活動</button>
                     <button id="clear-data" class="btn btn-danger custom-btn m-1"><i class="bi bi-trash3"></i> 初始化資料</button>
                     
@@ -219,6 +219,9 @@
                     <button id="export-event-json" class="btn btn-secondary custom-btn m-1 admin-only" title="匯出單一活動模板"><i class="bi bi-card-list"></i> 匯出單一活動</button>
                     <button id="export-all-events-btn" class="btn btn-warning custom-btn m-1 admin-only" title="匯出完整的 events.json"><i class="bi bi-list-stars"></i> 匯出完整清單</button>
                     <button id="import-events-file-btn" class="btn btn-secondary custom-btn m-1 admin-only" title="匯入本地 events.json"><i class="bi bi-file-earmark-arrow-up"></i> 匯入活動檔案</button>
+                    <button id="save-event-master-btn" class="btn btn-success custom-btn m-1 admin-only" title="將表單中的活動名稱、日期、標籤儲存到雲端活動清單"><i class="bi bi-cloud-arrow-up"></i> 儲存活動到清單</button>
+                    <button id="delete-event-master-btn" class="btn btn-danger custom-btn m-1 admin-only" title="從雲端活動清單移除目前選取的活動"><i class="bi bi-cloud-minus"></i> 從清單刪除活動</button>
+                    <button id="seed-events-btn" class="btn btn-secondary custom-btn m-1 admin-only" title="把 events.json 的活動合併進雲端活動清單"><i class="bi bi-cloud-upload"></i> 匯入 events.json 到雲端</button>
                 </div>
                 
                 <!-- 隱藏的檔案輸入框 -->

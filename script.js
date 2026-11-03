@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const LOCAL_RECORDS_KEY = 'gachaRecords';            // localStorage：本機紀錄
     const LAST_UID_KEY = 'gacha_last_uid_v1';            // localStorage：本機紀錄最後一次對應的雲端帳號
     const UNSYNCED_KEY = 'gacha_unsynced_v1';            // localStorage：本機有還沒存到雲端的修改
+    const SYNC_BASE_PREFIX = 'gacha_sync_base_v1_';      // localStorage：上次和雲端同步時的紀錄 (三方合併的基準)
 
     // Firestore 路徑
     const SHARED_COLLECTION = 'shared';                  // shared/events：所有人可讀、管理員可寫
@@ -391,35 +392,121 @@ document.addEventListener('DOMContentLoaded', () => {
     const setUnsynced = (flag) => (flag ? localStorage.setItem(UNSYNCED_KEY, '1') : localStorage.removeItem(UNSYNCED_KEY));
     const hasUnsynced = () => localStorage.getItem(UNSYNCED_KEY) === '1';
 
-    // 寫入雲端前先確認：雲端的 lastUpdated 和上次看到的一樣才寫入。
-    // 不一樣代表其他裝置 (或其他分頁) 改過，這次不寫入，改為重新載入雲端紀錄，避免覆蓋別人的修改。
+    const cloneRecords = (list) => JSON.parse(JSON.stringify(list));
+
+    // ---- 三方合併 ----
+    // 「同步基準」= 上次和雲端同步時的紀錄。雲端被其他裝置改過時，
+    // 拿「同步基準、本機、雲端」三份比較，就知道哪一邊改了什麼，兩邊的修改都能保留。
+    function readSyncBase(uid) {
+        try {
+            const base = JSON.parse(localStorage.getItem(SYNC_BASE_PREFIX + uid));
+            return Array.isArray(base) ? base : null;
+        } catch (e) {
+            return null;
+        }
+    }
+    const writeSyncBase = (uid, list) => localStorage.setItem(SYNC_BASE_PREFIX + uid, JSON.stringify(list));
+
+    const RECORD_FIELDS = ['date', 'event', 'account', 'pulls', 'notes', 'tag'];
+    const recordKey = (r) => JSON.stringify(RECORD_FIELDS.map((f) => (r[f] === undefined ? null : r[f])));
+    const sameRecord = (a, b) => (a === undefined || b === undefined) ? a === b : recordKey(a) === recordKey(b);
+
+    // 兩份紀錄清單內容是否完全相同 (不看順序)
+    function sameRecordSet(a, b) {
+        if (a.length !== b.length) return false;
+        const byId = new Map(a.map((r) => [r.id, r]));
+        return b.every((r) => byId.has(r.id) && sameRecord(byId.get(r.id), r));
+    }
+
+    // 本機相對於同步基準，改了幾筆 (新增 / 修改 / 刪除)
+    function countChanges(base, local) {
+        const baseById = new Map(base.map((r) => [r.id, r]));
+        const localIds = new Set(local.map((r) => r.id));
+        return local.filter((r) => !sameRecord(baseById.get(r.id), r)).length
+            + base.filter((r) => !localIds.has(r.id)).length;
+    }
+
+    // 以紀錄 id 逐筆比較：
+    //   只有一邊改了 (含刪除)      → 採用改了的那邊
+    //   兩邊都改了同一筆           → 以本機 (正在存檔的這台) 為準
+    //   一邊刪除、另一邊修改       → 保留修改後的紀錄
+    //   兩邊新增的紀錄 id 剛好相同 → 兩筆都保留 (雲端那筆換新 id)
+    //   兩邊輸入了內容完全相同的紀錄 → 只留一筆
+    function mergeRecords(base, local, remote) {
+        const baseById = new Map(base.map((r) => [r.id, r]));
+        const localById = new Map(local.map((r) => [r.id, r]));
+        const remoteById = new Map(remote.map((r) => [r.id, r]));
+        const ids = [...new Set([...remoteById.keys(), ...localById.keys(), ...baseById.keys()])];
+        const usedIds = new Set(ids);
+        let nextId = Date.now();
+        const merged = [];
+        let conflicts = 0;
+
+        ids.forEach((id) => {
+            const b = baseById.get(id), l = localById.get(id), r = remoteById.get(id);
+            if (sameRecord(l, r)) { if (l) merged.push(l); }
+            else if (sameRecord(l, b)) { if (r) merged.push(r); }
+            else if (sameRecord(r, b)) { if (l) merged.push(l); }
+            else if (!l || !r) { merged.push(l || r); }
+            else if (!b) {
+                merged.push(l);
+                while (usedIds.has(nextId)) nextId++;
+                usedIds.add(nextId);
+                merged.push({ ...r, id: nextId++ });
+            } else { merged.push(l); conflicts++; }
+        });
+
+        const seen = new Set();
+        return {
+            records: merged.filter((r) => { const k = recordKey(r); if (seen.has(k)) return false; seen.add(k); return true; }),
+            conflicts
+        };
+    }
+
+    // 寫入雲端：雲端的 lastUpdated 和上次看到的一樣就直接寫入；
+    // 不一樣代表其他裝置 (或其他分頁) 改過，先三方合併再寫入，不會覆蓋別人的修改。
     async function saveToCloud() {
         hasPendingCloudSave = false;
         if (!currentUser || !isCloudMode || isCloudLoading) return;
         const uid = currentUser.uid;
+        const localSnapshot = cloneRecords(records);
+        const base = readSyncBase(uid) || [];
         try {
             if (!window.runTransaction) throw new Error('Firebase SDK functions missing');
             const ref = getCloudDocRef();
             const stamp = Date.now();
-            const conflict = await window.runTransaction(window.db, async (tx) => {
+            const result = await window.runTransaction(window.db, async (tx) => {
                 const snap = await tx.get(ref);
-                const remoteUpdatedAt = snap.exists() ? updatedAtOf(snap.data()) : null;
-                if (remoteUpdatedAt !== knownCloudUpdatedAt) return true;
-                tx.set(ref, { records, lastUpdated: new Date(stamp) }, { merge: true });
-                return false;
+                const data = snap.exists() ? snap.data() : null;
+                let written = localSnapshot;
+                let merge = null;
+                if (updatedAtOf(data) !== knownCloudUpdatedAt) {
+                    const remote = sanitizeRecords(data && Array.isArray(data.records) ? data.records : []).records;
+                    merge = mergeRecords(base, localSnapshot, remote);
+                    written = merge.records;
+                }
+                tx.set(ref, { records: written, lastUpdated: new Date(stamp) }, { merge: true });
+                return { written, merge };
             });
             if (!currentUser || currentUser.uid !== uid) return;   // 存檔期間已登出或換帳號
 
-            if (conflict) {
-                console.warn('[CLOUD] 雲端已被其他裝置更新，改為重新載入');
-                await loadFromCloud();
-                showToast('其他裝置剛更新過紀錄，已重新載入雲端資料，請再做一次剛才的修改。', 'error');
-                return;
-            }
             knownCloudUpdatedAt = stamp;
-            setUnsynced(false);
+            writeSyncBase(uid, result.written);
+            if (result.merge) {
+                // 套用合併結果，同時保留存檔期間使用者又做的修改
+                records = mergeRecords(localSnapshot, records, result.written).records;
+                dateFilterDirty = true;
+                localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
+                renderAll();
+                showToast(result.merge.conflicts > 0
+                    ? `已和其他裝置的修改合併 (${result.merge.conflicts} 筆兩邊都改過，採用這台的版本)`
+                    : '已和其他裝置的修改合併', 'info');
+            }
+            const stillDirty = !sameRecordSet(records, result.written);
+            setUnsynced(stillDirty);
+            if (stillDirty) saveData();
             updateCloudStatus('online', '雲端就緒 (已同步)');
-            console.log('[CLOUD] Auto-saved successfully.');
+            console.log(`[CLOUD] Saved${result.merge ? ' (merged)' : ''}.`);
         } catch (error) {
             console.error('[CLOUD] Auto-save failed:', error);
             updateCloudStatus('offline', '儲存失敗 (修改先存在本機)');
@@ -446,6 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
         hasPendingCloudSave = false;
         sessionStorage.removeItem(OLD_DATA_CACHE_PREFIX + uid);
         localStorage.removeItem(LOCAL_RECORDS_KEY);
+        localStorage.removeItem(SYNC_BASE_PREFIX + uid);
         setUnsynced(false);
         knownCloudUpdatedAt = null;
         records = [];
@@ -454,14 +542,7 @@ document.addEventListener('DOMContentLoaded', () => {
         resetFormState();
     }
 
-    function applyLoadedRecords(list) {
-        const dropped = setRecords(list);
-        normalizeAllRecords();
-        localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
-        renderAll();
-        resetFormState();
-        return dropped;
-    }
+    const todayStamp = () => new Date().toISOString().split('T')[0];
 
     // 讀取雲端紀錄 (不使用快取：快取會讓其他裝置的修改在這個分頁看不到，之後存檔又把它們覆蓋)
     async function loadFromCloud() {
@@ -477,24 +558,41 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = docSnap.exists() ? docSnap.data() : null;
             knownCloudUpdatedAt = updatedAtOf(data);
             const cloudRecords = data && Array.isArray(data.records) ? data.records : [];
+            const oldBase = readSyncBase(uid);
 
-            if (cloudRecords.length > 0) {
-                // 以雲端為準；本機若有還沒存到雲端、而且和雲端不同的紀錄，先下載備份
-                const unsyncedLocal = hasUnsynced() && records.length > 0 ? records : null;
+            if (cloudRecords.length > 0 || (oldBase && data)) {
+                // 本機有還沒存到雲端的修改時：有同步基準就合併，沒有就以雲端為準並先備份
+                const unsyncedLocal = hasUnsynced() && records.length > 0 ? cloneRecords(records) : null;
+                const dropped = setRecords(cloudRecords);
+                const cloudClean = cloneRecords(records);
+                writeSyncBase(uid, cloudClean);
                 setUnsynced(false);
-                const dropped = applyLoadedRecords(cloudRecords);
+
+                let offlineChanges = 0;
+                if (unsyncedLocal && oldBase) {
+                    offlineChanges = countChanges(oldBase, unsyncedLocal);
+                    records = mergeRecords(oldBase, unsyncedLocal, cloudClean).records;
+                }
+                normalizeAllRecords();
+                localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
+                renderAll();
+                resetFormState();
+                if (!sameRecordSet(records, cloudClean)) saveData();
 
                 if (dropped > 0) {
-                    downloadJson(cloudRecords, `gacha_cloud_raw_${new Date().toISOString().split('T')[0]}.json`);
+                    downloadJson(cloudRecords, `gacha_cloud_raw_${todayStamp()}.json`);
                     showToast(`雲端有 ${dropped} 筆紀錄格式不正確已略過，原始資料已下載備份`, 'error');
-                } else if (unsyncedLocal && JSON.stringify(unsyncedLocal) !== JSON.stringify(records)) {
-                    downloadJson(unsyncedLocal, `gacha_local_backup_${new Date().toISOString().split('T')[0]}.json`);
-                    showToast('本機有還沒存到雲端的紀錄，已下載備份，並改用雲端紀錄。', 'info');
+                } else if (offlineChanges > 0) {
+                    showToast(`已載入雲端紀錄，並合併 ${offlineChanges} 筆離線時的修改`, 'success');
+                } else if (unsyncedLocal && !oldBase && !sameRecordSet(unsyncedLocal, cloudClean)) {
+                    downloadJson(unsyncedLocal, `gacha_local_backup_${todayStamp()}.json`);
+                    showToast('本機有還沒上傳的紀錄，已下載備份，並改用雲端紀錄。', 'info');
                 } else {
                     showToast('已載入雲端紀錄', 'success');
                 }
                 updateCloudStatus('online', '雲端就緒 (已載入)');
             } else if (records.length > 0) {
+                writeSyncBase(uid, []);
                 if (confirmUploadLocalRecords(uid)) {
                     saveData();
                     showToast('已將本地紀錄同步至雲端', 'info');
@@ -509,16 +607,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     showToast('已略過上傳，本機紀錄已清空', 'info');
                 }
             } else {
+                writeSyncBase(uid, []);
                 updateCloudStatus('online', '雲端就緒 (尚無資料)');
             }
             rememberUser(uid);
         } catch (error) {
-            // 讀不到雲端時改回離線模式，避免之後的編輯以本機紀錄覆蓋雲端
+            // 讀不到雲端時改回離線模式，避免之後的編輯以本機紀錄覆蓋雲端；
+            // 這段期間的修改會在下次成功連上雲端時合併
             isCloudLoading = false;
             isCloudMode = false;
             console.error('[CLOUD] Load failed:', error);
-            updateCloudStatus('offline', '雲端載入失敗');
-            showToast('無法載入雲端資料，請檢查權限或網路。', 'error');
+            updateCloudStatus('offline', '雲端載入失敗 (修改先存在本機)');
+            showToast('無法載入雲端資料，修改會先存在本機，下次連上時合併。', 'error');
         }
     }
 

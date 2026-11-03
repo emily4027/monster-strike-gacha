@@ -114,7 +114,10 @@
                         <div> <!-- 儲存/取消按鈕 (左側) -->
                             <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> <span id="submit-btn-text">儲存紀錄</span></button>
                             <button type="button" class="btn btn-secondary" id="cancel-edit-btn" style="display: none;"><i class="bi bi-x-circle"></i> 取消編輯</button>
-                        </div>
+                            <!-- 管理員：活動清單 (預設隱藏) -->
+                            <button type="button" class="btn btn-outline-success admin-only" id="save-event-master-btn" title="將上方表單的活動名稱、日期、標籤儲存到雲端活動清單"><i class="bi bi-cloud-arrow-up"></i> 儲存活動到清單</button>
+                            <button type="button" class="btn btn-outline-danger admin-only" id="delete-event-master-btn" title="從雲端活動清單移除目前選取的活動"><i class="bi bi-cloud-minus"></i> 從清單刪除活動</button>
+                </div>
                         <div> <!-- 模式切換按鈕 (右側) -->
                             <button type="button" class="btn btn-outline-secondary" id="mode-toggle-btn" title="切換檢視/編輯模式">
                                 <i class="bi bi-eye"></i> 
@@ -210,18 +213,13 @@
             <div class="p-2">
                 <div class="btn-group w-100 flex-wrap">
                     <!-- 一般功能 -->
-                    <button id="export-data" class="btn btn-success custom-btn m-1" title="儲存目前紀錄為 JSON 檔案"><i class="bi bi-save"></i> 儲存資料</button>
-                    <button id="import-data" class="btn btn-info custom-btn m-1 text-white" title="載入 JSON 檔案"><i class="bi bi-folder2-open"></i> 載入資料</button>
-                    <button id="sync-remote-events" class="btn btn-primary custom-btn m-1"><i class="bi bi-cloud-download"></i> 同步活動</button>
+                    <button id="export-data" class="btn btn-success custom-btn m-1" title="下載目前紀錄的備份 (JSON 檔案)"><i class="bi bi-download"></i> 下載備份</button>
+                    <button id="import-data" class="btn btn-info custom-btn m-1 text-white" title="從備份檔 (JSON) 載入紀錄"><i class="bi bi-folder2-open"></i> 載入備份</button>
                     <button id="clear-data" class="btn btn-danger custom-btn m-1"><i class="bi bi-trash3"></i> 初始化資料</button>
-                    
+
                     <!-- 管理員功能 (預設隱藏) -->
-                    <button id="export-event-json" class="btn btn-secondary custom-btn m-1 admin-only" title="匯出單一活動模板"><i class="bi bi-card-list"></i> 匯出單一活動</button>
-                    <button id="export-all-events-btn" class="btn btn-warning custom-btn m-1 admin-only" title="匯出完整的 events.json"><i class="bi bi-list-stars"></i> 匯出完整清單</button>
-                    <button id="import-events-file-btn" class="btn btn-secondary custom-btn m-1 admin-only" title="匯入本地 events.json"><i class="bi bi-file-earmark-arrow-up"></i> 匯入活動檔案</button>
-                    <button id="save-event-master-btn" class="btn btn-success custom-btn m-1 admin-only" title="將表單中的活動名稱、日期、標籤儲存到雲端活動清單"><i class="bi bi-cloud-arrow-up"></i> 儲存活動到清單</button>
-                    <button id="delete-event-master-btn" class="btn btn-danger custom-btn m-1 admin-only" title="從雲端活動清單移除目前選取的活動"><i class="bi bi-cloud-minus"></i> 從清單刪除活動</button>
-                    <button id="seed-events-btn" class="btn btn-secondary custom-btn m-1 admin-only" title="把 events.json 的活動合併進雲端活動清單"><i class="bi bi-cloud-upload"></i> 匯入 events.json 到雲端</button>
+                    <button id="export-all-events-btn" class="btn btn-warning custom-btn m-1 admin-only" title="匯出完整活動清單，可用來更新 events.json 備援"><i class="bi bi-list-stars"></i> 匯出活動清單</button>
+                    <button id="import-events-file-btn" class="btn btn-secondary custom-btn m-1 admin-only" title="匯入活動清單 (events.json) 並同步到雲端，已存在的活動不會被覆蓋"><i class="bi bi-file-earmark-arrow-up"></i> 匯入活動清單</button>
                 </div>
                 
                 <!-- 隱藏的檔案輸入框 -->

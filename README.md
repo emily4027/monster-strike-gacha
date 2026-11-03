@@ -85,6 +85,7 @@
   "event": "2025-03月 Code Geass 反叛的魯路修",
   "date": "2025-03-15",
   "tag": "collab",
+  "aliases": ["2024-03月 Code Geass 反叛的魯路修"]
 }
 ```
 

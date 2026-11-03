@@ -702,6 +702,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!Array.isArray(data)) throw new Error('載入的資料格式不正確');
             masterEvents = dedupeMasterEvents(data.filter(isValidEvent).map(normalizeMasterEvent));
             dateFilterDirty = true;
+            normalizeAllRecords();
             updateEventFormSelect(records);
         } catch (error) {
             console.warn('無法載入活動清單 (events.json):', error);

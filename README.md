@@ -1,6 +1,7 @@
 # 📊 怪物彈珠 - 抽蛋統計工具 (Monster Strike Gacha Tracker)
 
 🔗 **線上使用**：https://emily4027.github.io/monster-strike-gacha/
+
 🧰 **工具箱首頁**：https://emily4027.github.io/monster-strike-toolbox/
 
 為《怪物彈珠》玩家設計的統計工具，用來記錄、管理並分析各個帳號在不同活動中的抽蛋投入狀況。提供歷史紀錄、統計儀表板、備份，並可透過 Google 登入進行雲端同步。

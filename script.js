@@ -126,8 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let hasPendingCloudSave = false;
     let toastTimer = null;
     let dateFilterDirty = true;   // 紀錄或活動清單有變動時，日期篩選才需要重建
-    // 上次讀取 / 寫入時雲端紀錄的 lastUpdated (毫秒)。存檔時雲端的值不一樣 = 其他裝置改過
-    let knownCloudUpdatedAt = null;
+    // 上次讀取 / 寫入時雲端紀錄的 { version, updatedAt }。存檔時雲端的值不一樣 = 其他裝置改過
+    let knownCloudStamp = null;
     // 雲端活動清單是否已讀到 (或確認雲端還沒有清單)；讀到之前不開放管理員寫入
     let masterEventsReady = false;
 
@@ -384,9 +384,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const getSharedEventsRef = () => window.doc(window.db, SHARED_COLLECTION, EVENTS_DOC_ID);
 
-    // 雲端文件的 lastUpdated 轉成毫秒 (沒有則為 null)
-    const updatedAtOf = (data) =>
-        (data && data.lastUpdated && typeof data.lastUpdated.toMillis === 'function') ? data.lastUpdated.toMillis() : null;
+    // 雲端文件的版本：version 每次寫入加 1；lastUpdated 一併比對，
+    // 這樣還開著舊版網頁 (不會更新 version) 的分頁存檔時也偵測得到
+    const cloudStampOf = (data) => ({
+        version: data && Number.isInteger(data.version) ? data.version : 0,
+        updatedAt: (data && data.lastUpdated && typeof data.lastUpdated.toMillis === 'function') ? data.lastUpdated.toMillis() : null
+    });
+    const sameStamp = (a, b) => !!a && !!b && a.version === b.version && a.updatedAt === b.updatedAt;
 
     // 「本機有還沒存到雲端的修改」標記：存檔時設定，雲端存檔成功後清除
     const setUnsynced = (flag) => (flag ? localStorage.setItem(UNSYNCED_KEY, '1') : localStorage.removeItem(UNSYNCED_KEY));
@@ -463,7 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // 寫入雲端：雲端的 lastUpdated 和上次看到的一樣就直接寫入；
+    // 寫入雲端：雲端的 version / lastUpdated 和上次看到的一樣就直接寫入；
     // 不一樣代表其他裝置 (或其他分頁) 改過，先三方合併再寫入，不會覆蓋別人的修改。
     async function saveToCloud() {
         hasPendingCloudSave = false;
@@ -478,19 +482,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await window.runTransaction(window.db, async (tx) => {
                 const snap = await tx.get(ref);
                 const data = snap.exists() ? snap.data() : null;
+                const current = cloudStampOf(data);
                 let written = localSnapshot;
                 let merge = null;
-                if (updatedAtOf(data) !== knownCloudUpdatedAt) {
+                if (!sameStamp(current, knownCloudStamp)) {
                     const remote = sanitizeRecords(data && Array.isArray(data.records) ? data.records : []).records;
                     merge = mergeRecords(base, localSnapshot, remote);
                     written = merge.records;
                 }
-                tx.set(ref, { records: written, lastUpdated: new Date(stamp) }, { merge: true });
-                return { written, merge };
+                const version = current.version + 1;
+                tx.set(ref, { records: written, version, lastUpdated: new Date(stamp) }, { merge: true });
+                return { written, merge, version };
             });
             if (!currentUser || currentUser.uid !== uid) return;   // 存檔期間已登出或換帳號
 
-            knownCloudUpdatedAt = stamp;
+            knownCloudStamp = { version: result.version, updatedAt: stamp };
             writeSyncBase(uid, result.written);
             if (result.merge) {
                 // 套用合併結果，同時保留存檔期間使用者又做的修改
@@ -498,9 +504,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 dateFilterDirty = true;
                 localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify(records));
                 renderAll();
-                showToast(result.merge.conflicts > 0
-                    ? `已和其他裝置的修改合併 (${result.merge.conflicts} 筆兩邊都改過，採用這台的版本)`
-                    : '已和其他裝置的修改合併', 'info');
+                showToast('雲端資料已被其他裝置更新，已自動合併兩邊的修改。' + (result.merge.conflicts > 0
+                    ? `（${result.merge.conflicts} 筆兩邊都改過，採用這台的版本）`
+                    : ''), 'info');
             }
             const stillDirty = !sameRecordSet(records, result.written);
             setUnsynced(stillDirty);
@@ -535,7 +541,7 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.removeItem(LOCAL_RECORDS_KEY);
         localStorage.removeItem(SYNC_BASE_PREFIX + uid);
         setUnsynced(false);
-        knownCloudUpdatedAt = null;
+        knownCloudStamp = null;
         records = [];
         dateFilterDirty = true;
         renderAll();
@@ -556,7 +562,7 @@ document.addEventListener('DOMContentLoaded', () => {
             isCloudLoading = false;
 
             const data = docSnap.exists() ? docSnap.data() : null;
-            knownCloudUpdatedAt = updatedAtOf(data);
+            knownCloudStamp = cloudStampOf(data);
             const cloudRecords = data && Array.isArray(data.records) ? data.records : [];
             const oldBase = readSyncBase(uid);
 

@@ -120,6 +120,10 @@
 
 `script.js` 依區塊整理：設定與常數 → DOM 與狀態 → 工具函式 → 雲端與登入 → 存檔 / 讀取 → 角色格式化與活動清單 → 渲染 → 表單模式 → 事件綁定 → 啟動。
 
+不碰畫面與 Firebase 的純函式放在獨立檔案，有自動化測試：
+- `sync.js`：版本比對與三方合併（`window.GachaSync`）。
+- `notes.js`：獲得角色字串的格式化與計算隻數（`window.GachaNotes`）。果實分配也會解析這個格式，改格式化規則時要一起確認果實分配。
+
 **Firestore 資料路徑**
 
 | 路徑 | 內容 | 讀寫權限 |
@@ -155,6 +159,12 @@ python -m http.server 8000     # 然後開啟 http://localhost:8000
 # 或使用 VS Code 的 Live Server 擴充功能
 ```
 
+**自動化測試**：需要 Node.js 18 以上，不用安裝任何套件。修改 `sync.js` 或 `notes.js` 後執行：
+
+```bash
+node --test tests/
+```
+
 ---
 
 ## 📂 檔案結構
@@ -164,6 +174,9 @@ python -m http.server 8000     # 然後開啟 http://localhost:8000
 ├── index.html      # 主應用程式介面、Firebase SDK 載入
 ├── style.css       # 客製化樣式與動畫效果
 ├── script.js       # 應用程式邏輯
+├── sync.js         # 版本比對與三方合併 (純函式)
+├── notes.js        # 獲得角色字串格式化與計算隻數 (純函式)
+├── tests/          # 自動化測試 (node --test tests/)
 ├── events.json     # 活動清單備援 / 初始資料
 ├── CHANGELOG.md    # 更新日誌
 └── README.md       # 專案說明

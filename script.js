@@ -21,6 +21,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // =====================================================
 
 
+    // 純函式放在 sync.js、notes.js (有自動化測試，見 tests/)
+    const { cloudStampOf, sameStamp, sameRecordSet, countChanges, mergeRecords } = window.GachaSync;
+    const { getCleanNotes, formatCharacterString, countCharacters } = window.GachaNotes;
+
     // =====================================================
     // 1. 設定與常數
     // =====================================================
@@ -314,11 +318,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return displayEventName || event;
     }
 
-    function getCleanNotes(notes) {
-        if (typeof notes !== 'string' || !notes) return '';
-        return notes.replace(/^(\d+)\s*抽\s*/, '').replace(/^(\?\?|？？)\s*抽\s*/, '').trim();
-    }
-
     function getSortedAccountNames() {
         const allNames = [...new Set(records.map((r) => r.account))];
         const preferred = [];
@@ -388,14 +387,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const getSharedEventsRef = () => window.doc(window.db, SHARED_COLLECTION, EVENTS_DOC_ID);
 
-    // 雲端文件的版本：version 每次寫入加 1；lastUpdated 一併比對，
-    // 這樣還開著舊版網頁 (不會更新 version) 的分頁存檔時也偵測得到
-    const cloudStampOf = (data) => ({
-        version: data && Number.isInteger(data.version) ? data.version : 0,
-        updatedAt: (data && data.lastUpdated && typeof data.lastUpdated.toMillis === 'function') ? data.lastUpdated.toMillis() : null
-    });
-    const sameStamp = (a, b) => !!a && !!b && a.version === b.version && a.updatedAt === b.updatedAt;
-
     // 「本機有還沒存到雲端的修改」標記：存檔時設定，雲端存檔成功後清除
     const setUnsynced = (flag) => (flag ? localStorage.setItem(UNSYNCED_KEY, '1') : localStorage.removeItem(UNSYNCED_KEY));
     const hasUnsynced = () => localStorage.getItem(UNSYNCED_KEY) === '1';
@@ -414,72 +405,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     const writeSyncBase = (uid, list) => localStorage.setItem(SYNC_BASE_PREFIX + uid, JSON.stringify(list));
-
-    // 比對紀錄內容時看 id 以外的所有欄位 (之後新增欄位也會一起比對)；
-    // 物件的欄位順序不影響結果
-    const stableStringify = (v) => {
-        if (Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
-        if (v && typeof v === 'object') {
-            return '{' + Object.keys(v).filter((k) => v[k] !== undefined).sort()
-                .map((k) => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
-        }
-        return JSON.stringify(v === undefined ? null : v);
-    };
-    const recordKey = (r) => { const { id, ...rest } = r; return stableStringify(rest); };
-    const sameRecord = (a, b) => (a === undefined || b === undefined) ? a === b : recordKey(a) === recordKey(b);
-
-    // 兩份紀錄清單內容是否完全相同 (不看順序)
-    function sameRecordSet(a, b) {
-        if (a.length !== b.length) return false;
-        const byId = new Map(a.map((r) => [r.id, r]));
-        return b.every((r) => byId.has(r.id) && sameRecord(byId.get(r.id), r));
-    }
-
-    // 本機相對於同步基準，改了幾筆 (新增 / 修改 / 刪除)
-    function countChanges(base, local) {
-        const baseById = new Map(base.map((r) => [r.id, r]));
-        const localIds = new Set(local.map((r) => r.id));
-        return local.filter((r) => !sameRecord(baseById.get(r.id), r)).length
-            + base.filter((r) => !localIds.has(r.id)).length;
-    }
-
-    // 以紀錄 id 逐筆比較：
-    //   只有一邊改了 (含刪除)      → 採用改了的那邊
-    //   兩邊都改了同一筆           → 以本機 (正在存檔的這台) 為準
-    //   一邊刪除、另一邊修改       → 保留修改後的紀錄
-    //   兩邊新增的紀錄 id 剛好相同 → 兩筆都保留 (雲端那筆換新 id；只有這種情況會改 id)
-    // 注意：果實分配用紀錄 id 記住匯入來源，其他地方不要更改既有紀錄的 id
-    //   兩邊輸入了內容完全相同的紀錄 → 只留一筆
-    function mergeRecords(base, local, remote) {
-        const baseById = new Map(base.map((r) => [r.id, r]));
-        const localById = new Map(local.map((r) => [r.id, r]));
-        const remoteById = new Map(remote.map((r) => [r.id, r]));
-        const ids = [...new Set([...remoteById.keys(), ...localById.keys(), ...baseById.keys()])];
-        const usedIds = new Set(ids);
-        let nextId = Date.now();
-        const merged = [];
-        let conflicts = 0;
-
-        ids.forEach((id) => {
-            const b = baseById.get(id), l = localById.get(id), r = remoteById.get(id);
-            if (sameRecord(l, r)) { if (l) merged.push(l); }
-            else if (sameRecord(l, b)) { if (r) merged.push(r); }
-            else if (sameRecord(r, b)) { if (l) merged.push(l); }
-            else if (!l || !r) { merged.push(l || r); }
-            else if (!b) {
-                merged.push(l);
-                while (usedIds.has(nextId)) nextId++;
-                usedIds.add(nextId);
-                merged.push({ ...r, id: nextId++ });
-            } else { merged.push(l); conflicts++; }
-        });
-
-        const seen = new Set();
-        return {
-            records: merged.filter((r) => { const k = recordKey(r); if (seen.has(k)) return false; seen.add(k); return true; }),
-            conflicts
-        };
-    }
 
     // 寫入雲端：雲端的 version / lastUpdated 和上次看到的一樣就直接寫入；
     // 不一樣代表其他裝置 (或其他分頁) 改過，先三方合併再寫入，不會覆蓋別人的修改。
@@ -786,43 +711,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // =====================================================
     // 6. 角色字串格式化與活動清單
     // =====================================================
-    // 自動格式化與排序角色字串 (tag 為 orb 時，純數字會自動補上「顆」)
-    function formatCharacterString(input, tag) {
-        if (!input) return '';
-        // 移除可能的「X抽」前綴 (如果使用者誤填，防呆用)
-        const cleanInput = input.replace(/^(\d+|[\?？]+)\s*[抽].*?[:：\s]/, '');
-
-        // 切割字串：支援 逗號, 頓號, 空白, 換行, 加號
-        const parts = cleanInput.split(/[,，、\s\+\n]+/);
-        const charList = [];
-
-        parts.forEach((part) => {
-            const p = part.trim();
-            if (!p) return;
-
-            const match = p.match(/^(.+?)(?:(?:[ *xX×]+)(\d+)[隻體]?|(\d+)[隻體])?$/);
-            if (!match) return;
-
-            let name = match[1].trim();
-            let count = 1;
-
-            // Group 2: 分隔符 + 數字 (*2)；Group 3: 數字 + 單位 (2隻)
-            if (match[2]) count = parseInt(match[2], 10);
-            else if (match[3]) count = parseInt(match[3], 10);
-
-            if (tag === 'orb' && /^\d+$/.test(name)) name += '顆';
-
-            // 合併重複輸入的角色
-            const existing = charList.find((c) => c.name === name);
-            if (existing) existing.count += count;
-            else charList.push({ name, count });
-        });
-
-        // 排序：數量多 -> 數量少；數量為 1 時不顯示 *1
-        charList.sort((a, b) => b.count - a.count);
-        return charList.map((item) => (item.count > 1 ? `${item.name}*${item.count}` : item.name)).join('、');
-    }
-
     // 整理所有紀錄：活動名稱 (空白整理 + 舊名稱自動對應新名稱) 與獲得角色格式
     function normalizeAllRecords() {
         const aliasMap = buildAliasMap();
@@ -1017,18 +905,6 @@ document.addEventListener('DOMContentLoaded', () => {
         { tag: 'orb', label: '寶珠', color: '#ffc107' },
         { tag: '', label: '未分類', color: '#adb5bd' }
     ];
-
-    // 獲得角色的隻數：用存檔時的格式 (角色*數量，以頓號分隔) 計算；
-    // 「3抽」「11顆」、純數字、「無」不算角色
-    function countCharacters(notes) {
-        return formatCharacterString(getCleanNotes(notes), '').split('、').reduce((sum, part) => {
-            const p = part.trim();
-            const m = p.match(/^(.*?)\*(\d+)$/);
-            const name = (m ? m[1] : p).trim();
-            if (!name || /^\d+\s*[抽顆]?$/.test(name) || /^(無|沒有|没有|-|－)$/.test(name)) return sum;
-            return sum + (m ? parseInt(m[2], 10) : 1);
-        }, 0);
-    }
 
     const formatPullsPerChar = (pulls, chars) => {
         const v = pulls / chars;

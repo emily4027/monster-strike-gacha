@@ -1008,6 +1008,81 @@ document.addEventListener('DOMContentLoaded', () => {
         tableBody.appendChild(fragment);
     }
 
+    // 統計：「抽數 ÷ 抽到角色數」只算本家與合作 (寶珠的獲得欄位是顆數、免費活動多半 0 抽)
+    const RATIO_TAGS = ['honke', 'collab'];
+    const TAG_SHARE_ORDER = [
+        { tag: 'honke', label: '本家', color: '#dc3545' },
+        { tag: 'collab', label: '合作', color: '#6610f2' },
+        { tag: 'free', label: '免費', color: '#198754' },
+        { tag: 'orb', label: '寶珠', color: '#ffc107' },
+        { tag: '', label: '未分類', color: '#adb5bd' }
+    ];
+
+    // 獲得角色的隻數：用存檔時的格式 (角色*數量，以頓號分隔) 計算；
+    // 「3抽」「11顆」、純數字、「無」不算角色
+    function countCharacters(notes) {
+        return formatCharacterString(getCleanNotes(notes), '').split('、').reduce((sum, part) => {
+            const p = part.trim();
+            const m = p.match(/^(.*?)\*(\d+)$/);
+            const name = (m ? m[1] : p).trim();
+            if (!name || /^\d+\s*[抽顆]?$/.test(name) || /^(無|沒有|没有|-|－)$/.test(name)) return sum;
+            return sum + (m ? parseInt(m[2], 10) : 1);
+        }, 0);
+    }
+
+    const formatPullsPerChar = (pulls, chars) => {
+        const v = pulls / chars;
+        return (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10).toLocaleString();
+    };
+
+    // 每月投入趨勢：依月份加總抽數，新的月份在上面
+    function renderTrendStats(filteredRecords) {
+        const byMonth = new Map();
+        filteredRecords.forEach((r) => {
+            const month = r.date.slice(0, 7);
+            byMonth.set(month, (byMonth.get(month) || 0) + r.pulls);
+        });
+        const months = [...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a));
+        const max = Math.max(0, ...months.map(([, pulls]) => pulls));
+
+        let html = '<h5><i class="bi bi-graph-up"></i> 每月投入趨勢</h5>';
+        if (months.length === 0) {
+            html += '<p><i>尚無資料</i></p>';
+        } else {
+            html += '<div class="trend-list">' + months.map(([month, pulls]) => {
+                const [y, m] = month.split('-');
+                const width = max > 0 ? Math.max(pulls > 0 ? 2 : 0, Math.round(pulls / max * 100)) : 0;
+                return `<div class="trend-row"><span class="trend-label">${escapeHtml(y)}年${escapeHtml(parseInt(m, 10))}月</span>`
+                    + `<span class="trend-track"><span class="trend-bar" style="width: ${width}%"></span></span>`
+                    + `<span class="trend-value">${pulls.toLocaleString()}</span></div>`;
+            }).join('') + '</div>';
+        }
+        $('trend-stats').innerHTML = html;
+    }
+
+    // 活動類型比例：各標籤的抽數占總抽數的比例
+    function renderTagShareStats(filteredRecords) {
+        const total = filteredRecords.reduce((sum, r) => sum + r.pulls, 0);
+        const byTag = new Map();
+        filteredRecords.forEach((r) => {
+            const tag = TAG_SHARE_ORDER.some((t) => t.tag === r.tag) ? r.tag : '';
+            byTag.set(tag, (byTag.get(tag) || 0) + r.pulls);
+        });
+        const parts = TAG_SHARE_ORDER.filter((t) => (byTag.get(t.tag) || 0) > 0)
+            .map((t) => ({ ...t, pulls: byTag.get(t.tag), pct: byTag.get(t.tag) / total * 100 }));
+
+        let html = '<h5><i class="bi bi-pie-chart-fill"></i> 活動類型比例</h5>';
+        if (total === 0) {
+            html += '<p><i>尚無資料</i></p>';
+        } else {
+            html += '<div class="share-bar">' + parts.map((p) =>
+                `<span style="width: ${p.pct}%; background-color: ${p.color}" title="${p.label} ${Math.round(p.pct)}%"></span>`).join('') + '</div>';
+            html += parts.map((p) =>
+                `<p><span class="share-dot" style="background-color: ${p.color}"></span>${p.label}: <strong>${p.pulls.toLocaleString()}</strong> 抽 (${Math.round(p.pct)}%)</p>`).join('');
+        }
+        $('tag-share-stats').innerHTML = html;
+    }
+
     function calculateStats(filteredRecords) {
         const totalPulls = filteredRecords.reduce((sum, record) => sum + record.pulls, 0);
         $('total-pulls').textContent = totalPulls.toLocaleString();
@@ -1025,17 +1100,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 各活動總抽數
         const eventStats = {};
+        let ratioPulls = 0;
+        let ratioChars = 0;
         filteredRecords.forEach((record) => {
             if (!eventStats[record.event]) {
-                eventStats[record.event] = { pulls: record.pulls, firstDate: record.date };
-            } else {
-                eventStats[record.event].pulls += record.pulls;
-                if (record.date < eventStats[record.event].firstDate) eventStats[record.event].firstDate = record.date;
+                eventStats[record.event] = { pulls: 0, chars: 0, ratio: false, firstDate: record.date };
+            }
+            const stat = eventStats[record.event];
+            stat.pulls += record.pulls;
+            if (record.date < stat.firstDate) stat.firstDate = record.date;
+            if (RATIO_TAGS.includes(record.tag)) {
+                const chars = countCharacters(record.notes);
+                stat.ratio = true;
+                stat.chars += chars;
+                ratioPulls += record.pulls;
+                ratioChars += chars;
             }
         });
 
         const eventStatsDiv = $('event-stats');
-        eventStatsDiv.innerHTML = '<h5><i class="bi bi-calendar-event-fill"></i> 各活動總抽數</h5>';
+        eventStatsDiv.innerHTML = '<h5><i class="bi bi-calendar-event-fill"></i> 各活動總抽數</h5>'
+            + (ratioChars > 0
+                ? `<p class="ratio-summary">本家＋合作：抽到 ${ratioChars.toLocaleString()} 隻，平均每隻 <strong>${formatPullsPerChar(ratioPulls, ratioChars)}</strong> 抽</p>`
+                : '');
         const scrollableContent = document.createElement('div');
         scrollableContent.id = 'event-stats-content';
 
@@ -1047,10 +1134,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const year = data.firstDate.split('-')[0];
                 const month = parseInt(data.firstDate.split('-')[1], 10);
                 const displayEventName = getCleanEventName(event, data.firstDate);
-                return `<p><span class="text-muted small me-2" style="display: inline-block; width: 75px;">${escapeHtml(year)}年 ${escapeHtml(month)}月</span> ${escapeHtml(displayEventName)}: <strong>${data.pulls.toLocaleString()}</strong> 抽</p>`;
+                const ratio = data.ratio && data.pulls > 0
+                    ? `<span class="event-ratio">${data.chars.toLocaleString()} 隻${data.chars > 0 ? ` · 每隻 ${formatPullsPerChar(data.pulls, data.chars)} 抽` : ''}</span>`
+                    : '';
+                return `<p><span class="text-muted small me-2" style="display: inline-block; width: 75px;">${escapeHtml(year)}年 ${escapeHtml(month)}月</span> ${escapeHtml(displayEventName)}: <strong>${data.pulls.toLocaleString()}</strong> 抽${ratio}</p>`;
             }).join('');
         }
         eventStatsDiv.appendChild(scrollableContent);
+
+        renderTrendStats(filteredRecords);
+        renderTagShareStats(filteredRecords);
     }
 
     function updateEventFormSelect(recordsToUse) {

@@ -195,6 +195,75 @@ body.is-admin .admin-only {
     padding-right: 10px; 
 }
 
+/* 各活動：抽到角色數與每隻平均抽數 */
+.event-ratio {
+    display: block;
+    margin-left: 83px;
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+.ratio-summary {
+    font-size: 0.9rem !important;
+    color: #495057;
+}
+
+/* 每月投入趨勢 */
+.trend-list {
+    max-height: 250px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+.trend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 0.9rem;
+}
+.trend-label {
+    flex: 0 0 82px;
+    color: #6c757d;
+}
+.trend-track {
+    flex: 1;
+    height: 10px;
+    background-color: var(--accent-light-blue);
+    border-radius: 5px;
+    overflow: hidden;
+}
+.trend-bar {
+    display: block;
+    height: 100%;
+    background-color: var(--accent-blue);
+    border-radius: 5px;
+}
+.trend-value {
+    flex: 0 0 52px;
+    text-align: right;
+    font-weight: 600;
+}
+
+/* 活動類型比例 */
+.share-bar {
+    display: flex;
+    height: 14px;
+    border-radius: 7px;
+    overflow: hidden;
+    background-color: var(--accent-light-blue);
+    margin: 8px 0 12px;
+}
+.share-bar span {
+    display: block;
+    height: 100%;
+}
+.share-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+}
+
 /* --- 紀錄編輯表單 --- */
 .form-label {
     font-weight: 600;

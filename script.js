@@ -411,8 +411,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const writeSyncBase = (uid, list) => localStorage.setItem(SYNC_BASE_PREFIX + uid, JSON.stringify(list));
 
-    const RECORD_FIELDS = ['date', 'event', 'account', 'pulls', 'notes', 'tag'];
-    const recordKey = (r) => JSON.stringify(RECORD_FIELDS.map((f) => (r[f] === undefined ? null : r[f])));
+    // 比對紀錄內容時看 id 以外的所有欄位 (之後新增欄位也會一起比對)；
+    // 物件的欄位順序不影響結果
+    const stableStringify = (v) => {
+        if (Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
+        if (v && typeof v === 'object') {
+            return '{' + Object.keys(v).filter((k) => v[k] !== undefined).sort()
+                .map((k) => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
+        }
+        return JSON.stringify(v === undefined ? null : v);
+    };
+    const recordKey = (r) => { const { id, ...rest } = r; return stableStringify(rest); };
     const sameRecord = (a, b) => (a === undefined || b === undefined) ? a === b : recordKey(a) === recordKey(b);
 
     // 兩份紀錄清單內容是否完全相同 (不看順序)
@@ -434,7 +443,8 @@ document.addEventListener('DOMContentLoaded', () => {
     //   只有一邊改了 (含刪除)      → 採用改了的那邊
     //   兩邊都改了同一筆           → 以本機 (正在存檔的這台) 為準
     //   一邊刪除、另一邊修改       → 保留修改後的紀錄
-    //   兩邊新增的紀錄 id 剛好相同 → 兩筆都保留 (雲端那筆換新 id)
+    //   兩邊新增的紀錄 id 剛好相同 → 兩筆都保留 (雲端那筆換新 id；只有這種情況會改 id)
+    // 注意：果實分配用紀錄 id 記住匯入來源，其他地方不要更改既有紀錄的 id
     //   兩邊輸入了內容完全相同的紀錄 → 只留一筆
     function mergeRecords(base, local, remote) {
         const baseById = new Map(base.map((r) => [r.id, r]));

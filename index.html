@@ -101,9 +101,9 @@
                     </div>
                     <div class="col-md-6">
                         <label for="notes" class="form-label">獲得角色</label>
-                        <input type="text" class="form-control" id="notes" placeholder="例如：虹夏*3, 麒麟兒*2">
+                        <input type="text" class="form-control" id="notes" placeholder="例如：虹夏*3、麒麟兒 x2">
                         <div class="form-text mt-1" style="font-size: 0.85rem; color: #6c757d;">
-                            <i class="bi bi-magic"></i> 系統會自動將輸入標準化 (例: 亞森x2 尼奧 -> 亞森*2、尼奧)
+                            <i class="bi bi-magic"></i> 儲存時自動整理 (例: 亞森 x2 尼奧、2隻杏子 → 亞森*2、杏子*2、尼奧)
                         </div>
                     </div>
                 </fieldset>
@@ -272,42 +272,60 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
-            <p>輸入角色時，您可以使用逗號、頓號或空格來分隔。系統會在儲存時自動幫您排版！</p>
-            
-            <h6 class="fw-bold mt-3 text-success"><i class="bi bi-check-circle-fill"></i> 正確格式範例 (會被自動轉換)</h6>
+            <p>多個角色可以用頓號、逗號、空格、加號或換行分隔。儲存時會自動整理成 <code>角色*數量</code>，同名角色會合併、依數量由多到少排序。</p>
+
+            <h6 class="fw-bold mt-3 text-success"><i class="bi bi-check-circle-fill"></i> 這些寫法都會變成 <code>亞森*2</code></h6>
             <ul class="list-group list-group-flush mb-3">
-              <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>標準格式</span>
-                <code>亞森*2、尼奧*1</code>
+              <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
+                <span>數量在後</span>
+                <code class="text-end">亞森*2　亞森x2　亞森×2　亞森2隻</code>
               </li>
-              <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>隨意輸入 (自動修正)</span>
-                <code>亞森x2 尼奧1體/隻</code>
+              <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
+                <span>中間有空格</span>
+                <code class="text-end">亞森 x2　亞森 *2　亞森 2隻</code>
               </li>
-              <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>寶珠標籤</span>
-                <code>114 (自動變 114顆)</code>
+              <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
+                <span>數量在前</span>
+                <code class="text-end">2*亞森　2x亞森　2隻亞森　2亞森</code>
+              </li>
+              <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
+                <span>補在後面</span>
+                <code class="text-end">亞森、*2　亞森、亞森</code>
+              </li>
+              <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
+                <span>全形</span>
+                <code class="text-end">亞森＊２　亞森２隻</code>
               </li>
             </ul>
 
-            <h6 class="fw-bold mt-3 text-danger"><i class="bi bi-x-circle-fill"></i> 自動轉換失敗範例</h6>
+            <h6 class="fw-bold mt-3 text-primary"><i class="bi bi-lightbulb-fill"></i> 其他規則</h6>
+            <ul class="list-group list-group-flush mb-3">
+              <li class="list-group-item">
+                <code>隻</code>、<code>體</code>、<code>個</code> 都可以當數量單位。
+              </li>
+              <li class="list-group-item">
+                寶珠標籤輸入純數字會自動補上「顆」：<code>114</code> → <code>114顆</code>
+              </li>
+              <li class="list-group-item">
+                數字直接放在名稱前面時，名稱要有 2 個字以上，所以 <code>2B</code>、<code>9S</code> 會保留為名稱。名稱只有 1 個字時請寫 <code>2*B</code>。
+              </li>
+            </ul>
+
+            <h6 class="fw-bold mt-3 text-danger"><i class="bi bi-x-circle-fill"></i> 不會被當成數量的寫法</h6>
             <ul class="list-group list-group-flush">
               <li class="list-group-item">
                 <div class="d-flex justify-content-between">
-                    <span class="fw-bold">錯誤：</span>
-                    <code>5亞森 或 亞森5</code>
+                    <span class="fw-bold">亞森5</span>
+                    <small class="text-muted">名稱後面直接接數字，會當成名稱的一部分</small>
                 </div>
-                <small class="text-muted d-block mt-1">原因：數字直接加上名稱時，會被視為當前角色名稱的一部份。</small>
-                <!-- 修正：補上 5*亞森 後面的 </code> -->
-                <small class="text-primary d-block">修正：應輸入為 <code>亞森5體/隻</code> 或 <code>5*亞森</code> 或 <code>亞森*5</code></small>
+                <small class="text-primary d-block">請改成 <code>亞森*5</code> 或 <code>亞森5隻</code></small>
               </li>
               <li class="list-group-item">
                 <div class="d-flex justify-content-between">
-                    <span class="fw-bold">錯誤：</span>
-                    <code>亞森 14 或 14體 亞森 </code>
+                    <span class="fw-bold">亞森 14</span>
+                    <small class="text-muted">空格後只有數字，會當成另一項</small>
                 </div>
-                <small class="text-muted d-block mt-1">原因：數量和名稱之間有空格時，會被視為新的角色。</small>
-                <small class="text-primary d-block">修正：應輸入為 <code>亞森*14</code> 或 <code>14體/隻亞森</code></small>
+                <small class="text-primary d-block">請改成 <code>亞森*14</code> 或 <code>亞森 14隻</code></small>
               </li>
             </ul>
           </div>

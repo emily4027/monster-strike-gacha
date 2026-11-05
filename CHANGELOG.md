@@ -3,6 +3,11 @@
 本專案所有重大變更都會記錄於此文件。
 格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## [1.2.3] - 2026-11-06
+
+### 變更 (Changed)
+- 懸浮工具箱的工具連結改為讀取工具箱的 `tools.js`（`window.MS_TOOLS`），工具箱新增工具時這裡會自動出現，不用再手動修改 `index.html`。讀不到時使用 `index.html` 裡原本的連結；「工具箱首頁」連結維持寫在 `index.html`。
+
 ## [1.2.2] - 2026-11-06
 
 ### 變更 (Changed)

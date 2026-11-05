@@ -52,7 +52,7 @@
 - 基於 Bootstrap 5 客製化的卡片式介面。
 - 操作時有 Toast 訊息提示（成功 / 錯誤 / 資訊）。
 - RWD：手機與電腦皆可使用。
-- 懸浮工具箱可快速前往其他工具。
+- 懸浮工具箱可快速前往其他工具。工具清單讀取[工具箱](https://github.com/emily4027/monster-strike-toolbox)的 `tools.js`，工具箱新增工具時會自動出現；讀不到時使用 `index.html` 裡的連結。
 
 ---
 

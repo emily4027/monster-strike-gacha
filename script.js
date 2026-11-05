@@ -36,6 +36,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const EVENTS_DOC_ID = 'events';
     const ADMINS_COLLECTION = 'admins';                  // admins/{uid}：存在即為管理員
 
+    // 懸浮工具箱：工具清單讀取工具箱的 tools.js，讀不到時保留 index.html 裡寫死的連結
+    const TOOLBOX_TOOLS_URL = 'https://emily4027.github.io/monster-strike-toolbox/tools.js';
+    const THIS_TOOL_ID = 'gacha';
+
     const CLOUD_SAVE_DELAY_MS = 1500;
     const TOAST_DURATION_MS = 3000;
     const FIREBASE_WAIT_RETRIES = 50;                    // 每次間隔 100ms
@@ -1780,6 +1784,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 
+    // 懸浮工具箱：載入工具箱的 tools.js (window.MS_TOOLS) 後重建工具連結。
+    // 用動態載入，不擋住頁面啟動；讀不到或格式不對就維持 index.html 裡的連結
+    function renderToolboxMenu() {
+        const list = document.querySelector('.toolbox-items-list');
+        const tools = Array.isArray(window.MS_TOOLS) ? window.MS_TOOLS : [];
+        const valid = tools.filter((t) => t && typeof t.name === 'string' && t.name
+            && typeof t.url === 'string' && /^https:\/\//.test(t.url));
+        if (!list || valid.length === 0) return;
+
+        const home = list.querySelector('.toolbox-home');
+        const links = valid.map((t) => {
+            const active = t.id === THIS_TOOL_ID;
+            const emoji = typeof t.emoji === 'string' ? t.emoji + ' ' : '';
+            return `<a href="${escapeHtml(t.url)}" class="toolbox-item${active ? ' active' : ''}">`
+                + `${escapeHtml(emoji + t.name)}${active ? ' (現行)' : ''}</a>`;
+        }).join('');
+        list.innerHTML = (home ? home.outerHTML : '') + links;
+    }
+
+    function loadToolboxMenu() {
+        const script = document.createElement('script');
+        script.src = TOOLBOX_TOOLS_URL;
+        script.async = true;
+        script.onload = renderToolboxMenu;
+        script.onerror = () => console.warn('[TOOLBOX] 讀不到工具箱的 tools.js，使用內建連結');
+        document.head.appendChild(script);
+    }
+
+
     // =====================================================
     // 10. 啟動
     // =====================================================
@@ -1788,6 +1821,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loadRecords();
         updateAdminButtonsState();   // 雲端活動清單讀到之前先停用管理員寫入
         initFirebaseAuth();
+        loadToolboxMenu();
 
         await loadStaticEvents();
         renderAll();

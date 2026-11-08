@@ -38,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Firestore 路徑
     const SHARED_COLLECTION = 'shared';                  // shared/events：所有人可讀、管理員可寫
     const EVENTS_DOC_ID = 'events';
+    const CHARACTER_FIXES_DOC_ID = 'characters';         // shared/characters：角色圖鑑的名稱修正 (只讀)
     const ADMINS_COLLECTION = 'admins';                  // admins/{uid}：存在即為管理員
 
     // 懸浮工具箱：工具清單讀取工具箱的 tools.js，讀不到時保留 index.html 裡寫死的連結
@@ -1543,6 +1544,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //   合作活動另外列出這個活動之前記過的角色
     // =====================================================
     let characterPools = [];
+    let characterNameFixes = null;
     const NOT_CHARACTER_RE = /^(?:\d+\s*[抽顆]?|[?？]+\s*抽|無|沒有|没有|-|－)$/;
     // 果實分配的註記與同名編號：「虹夏-2(擊種)」→「虹夏」(和角色圖鑑、果實分配的解析一致)
     const baseCharacterName = (name) => name.replace(/\s*[(（](?:同族|戰型|擊種|雙削)[)）]$/, '').replace(/-\d+$/, '').trim();
@@ -1553,12 +1555,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const lib = window.CharacterPools;
         if (!lib) return;   // 角色圖鑑的 pools.js 沒載入
         try {
-            const res = await fetch(CHARACTER_POOLS_URL);
+            // no-cache：卡池剛更新時不要讀到 GitHub Pages 快取的舊版
+            const res = await fetch(CHARACTER_POOLS_URL, { cache: 'no-cache' });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             characterPools = lib.readPools(await res.json());
             renderCharPicker();
         } catch (e) {
             console.warn('[POOLS] 讀不到角色圖鑑的卡池，獲得角色請手動輸入', e);
+        }
+        // 管理員在角色圖鑑做的名稱修正 (shared/characters)：「之前記過」的角色用修正後的名稱
+        try {
+            if (!lib.readNameFixes || !(await waitForFirebaseServices())) return;
+            const snap = await window.getDoc(window.doc(window.db, SHARED_COLLECTION, CHARACTER_FIXES_DOC_ID));
+            characterNameFixes = lib.readNameFixes(snap.exists() ? snap.data() : null);
+            renderCharPicker();
+        } catch (e) {
+            console.warn('[POOLS] 讀不到角色名稱修正，照紀錄原樣顯示', e);
         }
     }
 
@@ -1573,7 +1585,9 @@ document.addEventListener('DOMContentLoaded', () => {
         records.forEach((r) => {
             if (r.event !== eventName || r.tag === 'orb') return;
             parseCharacterList(getCleanNotes(r.notes || ''), r.tag).forEach(({ name }) => {
-                const n = baseCharacterName(name);
+                const base = baseCharacterName(name);
+                const n = base && characterNameFixes && window.CharacterPools
+                    ? window.CharacterPools.resolveName(characterNameFixes, base) : base;
                 if (n && !NOT_CHARACTER_RE.test(n) && !names.includes(n)) names.push(n);
             });
         });

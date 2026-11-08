@@ -146,6 +146,7 @@
 |------|------|----------|
 | `artifacts/{appId}/users/{uid}/data/gacha_records` | 使用者的抽卡紀錄 (`records`、`version`、`lastUpdated`) | 僅本人 |
 | `shared/events` | 活動清單 | 所有人可讀，管理員可寫 |
+| `shared/characters` | 角色名稱修正（角色圖鑑的管理員維護，抽卡統計只讀，用在「這個活動之前記過」） | 所有人可讀，管理員可寫 |
 | `admins/{uid}` | 管理員名單 | 僅本人可讀，前端不可寫 |
 
 `appId` 未提供時為 `default-app-id`。

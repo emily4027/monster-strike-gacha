@@ -490,3 +490,49 @@ tr[data-tag="orb"] { border-left: 5px solid #ffc107; }
     box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     border: none;
 }
+/* --- 卡池角色按鈕 (選好活動後顯示在「獲得角色」下面) --- */
+.char-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--accent-light-blue);
+    border-radius: 12px;
+    padding: 10px 12px;
+}
+.char-picker-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+.char-picker-title {
+    flex: 0 0 100%;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #555;
+}
+.char-picker-limited .char-picker-title { color: #ad1457; }
+.char-picker-collab .char-picker-title { color: #6610f2; }
+.char-chip {
+    border: 1px solid #c5cae9;
+    background: #fff;
+    color: var(--primary-color);
+    border-radius: 999px;
+    padding: 3px 12px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.char-chip:hover { border-color: var(--accent-blue); }
+.char-chip.is-picked {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: #fff;
+}
+.char-chip-count {
+    margin-left: 6px;
+    font-weight: 700;
+    font-size: 0.8rem;
+}
+.char-chip:disabled { opacity: 0.6; cursor: not-allowed; }

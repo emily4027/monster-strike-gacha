@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 純函式放在 sync.js、notes.js (有自動化測試，見 tests/)
     const { cloudStampOf, sameStamp, sameRecordSet, countChanges, mergeRecords } = window.GachaSync;
-    const { getCleanNotes, formatCharacterString, countCharacters } = window.GachaNotes;
+    const { getCleanNotes, parseCharacterList, formatCharacterString, countCharacters } = window.GachaNotes;
 
     // =====================================================
     // 1. 設定與常數
@@ -43,6 +43,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // 懸浮工具箱：工具清單讀取工具箱的 tools.js，讀不到時保留 index.html 裡寫死的連結
     const TOOLBOX_TOOLS_URL = 'https://emily4027.github.io/monster-strike-toolbox/tools.js';
     const THIS_TOOL_ID = 'gacha';
+
+    // 角色圖鑑的卡池 (活動 → 可以抽到的角色)，同網域；index.html 也從這裡載入 pools.js
+    const CHARACTER_POOLS_URL = '/monster-strike-character-catalog/pools.json';
 
     const CLOUD_SAVE_DELAY_MS = 1500;
     const TOAST_DURATION_MS = 3000;
@@ -1292,6 +1295,7 @@ document.addEventListener('DOMContentLoaded', () => {
         accountSelect.value = '--new--';
         accountInput.value = '';
         updateAccountEditBtnState();
+        renderCharPicker();
     }
 
     function enterAddMode() {
@@ -1312,6 +1316,7 @@ document.addEventListener('DOMContentLoaded', () => {
         accountSelect.value = '--new--';
         showToast('請輸入新活動資訊', 'info');
         updateAccountEditBtnState();
+        renderCharPicker();
     }
 
     function enterAccountEditMode() {
@@ -1382,6 +1387,7 @@ document.addEventListener('DOMContentLoaded', () => {
             pullsInput.value = '';
             notesInput.value = '';
         }
+        renderCharPicker();
     }
 
     function handleEventSelectChange() {
@@ -1528,6 +1534,117 @@ document.addEventListener('DOMContentLoaded', () => {
             window.scrollTo({ top: 0, behavior: 'smooth' });
             showToast('請在上方表單編輯', 'info');
         }
+    }
+
+
+    // =====================================================
+    // 8-1. 卡池角色按鈕：選好活動後，把這個活動可以抽到的角色列成按鈕，點一下加進「獲得角色」
+    //   卡池資料在角色圖鑑 (pools.js、pools.json)；讀不到時不顯示按鈕，照常手動輸入
+    //   合作活動另外列出這個活動之前記過的角色
+    // =====================================================
+    let characterPools = [];
+    const NOT_CHARACTER_RE = /^(?:\d+\s*[抽顆]?|[?？]+\s*抽|無|沒有|没有|-|－)$/;
+    // 果實分配的註記與同名編號：「虹夏-2(擊種)」→「虹夏」(和角色圖鑑、果實分配的解析一致)
+    const baseCharacterName = (name) => name.replace(/\s*[(（](?:同族|戰型|擊種|雙削)[)）]$/, '').replace(/-\d+$/, '').trim();
+    // 輸入框以空白、逗號分隔角色，名稱裡的空白要拿掉 (「Two for all」→「Twoforall」)，結尾的逗號也拿掉
+    const pickerName = (name) => name.replace(/\s+/g, '').replace(/[,，、]+$/, '');
+
+    async function loadCharacterPools() {
+        const lib = window.CharacterPools;
+        if (!lib) return;   // 角色圖鑑的 pools.js 沒載入
+        try {
+            const res = await fetch(CHARACTER_POOLS_URL);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            characterPools = lib.readPools(await res.json());
+            renderCharPicker();
+        } catch (e) {
+            console.warn('[POOLS] 讀不到角色圖鑑的卡池，獲得角色請手動輸入', e);
+        }
+    }
+
+    function currentFormEventName() {
+        const name = (isAddingNewEvent || editMode) ? eventInput.value : eventSelect.value;
+        return name === '--new--' ? '' : normalizeName(name || '');
+    }
+
+    // 這個活動之前記過的角色 (所有帳號)
+    function recordedCharactersOf(eventName) {
+        const names = [];
+        records.forEach((r) => {
+            if (r.event !== eventName || r.tag === 'orb') return;
+            parseCharacterList(getCleanNotes(r.notes || ''), r.tag).forEach(({ name }) => {
+                const n = baseCharacterName(name);
+                if (n && !NOT_CHARACTER_RE.test(n) && !names.includes(n)) names.push(n);
+            });
+        });
+        return names;
+    }
+
+    function renderCharPicker() {
+        const picker = $('char-picker');
+        if (!picker) return;
+        const eventName = currentFormEventName();
+        const lib = window.CharacterPools;
+        const groups = [];
+        if (eventName && !notesInput.disabled) {
+            if (lib) {
+                lib.poolsForEvent(characterPools, eventName).forEach((p) => {
+                    groups.push({ title: `${p.kind === 'collab' ? '合作' : '限定'}：${p.pool}`, kind: p.kind, chars: p.chars.map(pickerName) });
+                });
+            }
+            if (tagSelect.value === 'collab') {
+                const shown = new Set(groups.flatMap((g) => g.chars));
+                const past = recordedCharactersOf(eventName).filter((n) => !shown.has(n));
+                if (past.length > 0) groups.push({ title: '這個活動之前記過', kind: 'past', chars: past });
+            }
+        }
+
+        picker.hidden = groups.length === 0;
+        if (picker.hidden) { picker.replaceChildren(); return; }
+
+        const counts = new Map(parseCharacterList(notesInput.value, tagSelect.value).map((c) => [c.name, c.count]));
+        picker.replaceChildren(...groups.map((g) => {
+            const group = document.createElement('div');
+            group.className = `char-picker-group char-picker-${g.kind}`;
+            const title = document.createElement('div');
+            title.className = 'char-picker-title';
+            title.textContent = g.title;
+            group.appendChild(title);
+            g.chars.forEach((name) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'char-chip';
+                btn.dataset.name = name;
+                btn.title = `加 1 隻「${name}」`;
+                btn.textContent = name;
+                const count = counts.get(name);
+                if (count) {
+                    btn.classList.add('is-picked');
+                    const badge = document.createElement('span');
+                    badge.className = 'char-chip-count';
+                    badge.textContent = `×${count}`;
+                    btn.appendChild(badge);
+                }
+                group.appendChild(btn);
+            });
+            return group;
+        }));
+    }
+
+    function bindCharPicker() {
+        const picker = $('char-picker');
+        if (!picker) return;
+        picker.addEventListener('click', (e) => {
+            const btn = e.target.closest('.char-chip');
+            if (!btn || notesInput.disabled) return;
+            const current = notesInput.value.trim();
+            notesInput.value = formatCharacterString(current ? `${current}、${btn.dataset.name}` : btn.dataset.name, tagSelect.value);
+            renderCharPicker();
+        });
+        notesInput.addEventListener('input', renderCharPicker);
+        eventInput.addEventListener('input', renderCharPicker);
+        tagSelect.addEventListener('change', renderCharPicker);
+        eventSelect.addEventListener('change', renderCharPicker);
     }
 
 
@@ -1780,6 +1897,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function bindEvents() {
         bindFormEvents();
+        bindCharPicker();   // 要在 bindFormEvents 之後：選活動時先帶入標籤，再更新按鈕
         bindFilterEvents();
         bindDataEvents();
         bindAdminEvents();
@@ -1836,6 +1954,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 雲端活動清單 (有資料時取代 events.json)，不阻塞畫面
         refreshMasterEventsFromCloud();
+        loadCharacterPools();
     }
 
     checkAuthCache();

@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 純函式放在 sync.js、notes.js (有自動化測試，見 tests/)
     const { cloudStampOf, sameStamp, sameRecordSet, countChanges, mergeRecords } = window.GachaSync;
-    const { getCleanNotes, parseCharacterList, formatCharacterString, countCharacters } = window.GachaNotes;
+    const { getCleanNotes, parseCharacterList, formatCharacterString, countCharacters, renameCharacters } = window.GachaNotes;
 
     // =====================================================
     // 1. 設定與常數
@@ -123,6 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 狀態
     let records = [];
     let masterEvents = [];
+    let characterNameFixes = null;   // 角色圖鑑的名稱修正 (shared/characters)，讀到後才套用
     let globalEditMode = false;
     let editMode = false;
     let editEventName = null;
@@ -724,6 +725,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function normalizeAllRecords() {
         const aliasMap = buildAliasMap();
         let hasChanges = false;
+        const lib = window.CharacterPools;
+        const renameCharacter = characterNameFixes && characterNameFixes.renames.size > 0 && lib
+            ? (name) => lib.resolveName(characterNameFixes, name) : null;
 
         records.forEach((record) => {
             const cleanedEvent = normalizeName(record.event);
@@ -734,7 +738,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const originalNotes = record.notes || '';
-            const formattedNotes = formatCharacterString(originalNotes, record.tag);
+            let formattedNotes = formatCharacterString(originalNotes, record.tag);
+            // 角色圖鑑管理員的名稱修正：寫錯的角色名稱改成正確名稱 (每個人打開抽卡統計時改自己的紀錄)
+            if (renameCharacter) formattedNotes = renameCharacters(formattedNotes, record.tag, renameCharacter);
             if (originalNotes !== formattedNotes) {
                 record.notes = formattedNotes;
                 hasChanges = true;
@@ -1545,7 +1551,6 @@ document.addEventListener('DOMContentLoaded', () => {
     //   合作活動另外列出這個活動之前記過的角色
     // =====================================================
     let characterPools = [];
-    let characterNameFixes = null;
     const NOT_CHARACTER_RE = /^(?:\d+\s*[抽顆]?|[?？]+\s*抽|無|沒有|没有|-|－)$/;
     // 果實分配的註記與同名編號：「虹夏-2(擊種)」→「虹夏」(和角色圖鑑、果實分配的解析一致)
     const baseCharacterName = (name) => name.replace(/\s*[(（](?:同族|戰型|擊種|雙削)[)）]$/, '').replace(/-\d+$/, '').trim();
@@ -1564,11 +1569,16 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             console.warn('[POOLS] 讀不到角色圖鑑的卡池，獲得角色請手動輸入', e);
         }
-        // 管理員在角色圖鑑做的名稱修正 (shared/characters)：「之前記過」的角色用修正後的名稱
+        // 管理員在角色圖鑑做的名稱修正 (shared/characters)：
+        //   紀錄裡寫錯的名稱改成正確名稱 (normalizeAllRecords，有改到時照常存檔、同步雲端)，「之前記過」也用修正後的名稱
         try {
             if (!lib.readNameFixes || !(await waitForFirebaseServices())) return;
             const snap = await window.getDoc(window.doc(window.db, SHARED_COLLECTION, CHARACTER_FIXES_DOC_ID));
             characterNameFixes = lib.readNameFixes(snap.exists() ? snap.data() : null);
+            if (characterNameFixes.renames.size > 0) {
+                normalizeAllRecords();
+                renderAll();
+            }
             renderCharPicker();
         } catch (e) {
             console.warn('[POOLS] 讀不到角色名稱修正，照紀錄原樣顯示', e);

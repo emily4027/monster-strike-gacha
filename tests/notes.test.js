@@ -3,7 +3,7 @@
 // 改動格式化規則時，這裡的範例要一起確認果實分配那邊還能正確解析。
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { getCleanNotes, parseCharacterList, formatCharacterString, countCharacters } = require('../notes.js');
+const { getCleanNotes, parseCharacterList, formatCharacterString, countCharacters, renameCharacters } = require('../notes.js');
 
 const same = (inputs, expected) => {
     for (const s of inputs) assert.equal(formatCharacterString(s), expected, JSON.stringify(s));
@@ -109,4 +109,35 @@ test('countCharacters：不是角色的內容不算', () => {
     assert.equal(countCharacters('11'), 0);
     assert.equal(countCharacters('3抽'), 0);
     assert.equal(countCharacters('30抽 亞森'), 1);
+});
+
+// ---- 角色名稱修正 (角色圖鑑的 shared/characters) ----
+const FIXES = { 砲姐: '御坂美琴', 羌廆: '羌瘣', 糸師: '糸師 凜' };
+const fix = (n) => FIXES[n] || n;
+
+test('名稱修正：換成正確名稱，數量不變', () => {
+    assert.equal(renameCharacters('砲姐*2、亞森', 'collab', fix), '御坂美琴*2、亞森');
+    assert.equal(renameCharacters('羌廆', 'collab', fix), '羌瘣');
+});
+
+test('名稱修正：改完同名的會合併', () => {
+    assert.equal(renameCharacters('砲姐、御坂美琴*2', 'collab', fix), '御坂美琴*3');
+});
+
+test('名稱修正：保留果實分配的同名編號與註記', () => {
+    assert.equal(renameCharacters('砲姐-2(擊種)、砲姐（同族）', 'collab', fix), '御坂美琴-2(擊種)、御坂美琴（同族）');
+});
+
+test('名稱修正：新名稱的空白拿掉；沒有要改時原樣回傳；寶珠紀錄不改', () => {
+    assert.equal(renameCharacters('糸師', 'collab', fix), '糸師凜');
+    const untouched = '亞森 x2 尼奧';
+    assert.equal(renameCharacters(untouched, 'honke', fix), untouched);
+    assert.equal(renameCharacters('砲姐', 'orb', fix), '砲姐');
+    assert.equal(renameCharacters('', 'collab', fix), '');
+    assert.equal(renameCharacters('砲姐', 'collab', null), '砲姐');
+});
+
+test('名稱修正：改完的格式和果實分配解析的格式一致 (算隻數不變)', () => {
+    const before = '砲姐*2、御坂美琴、羌廆';
+    assert.equal(countCharacters(renameCharacters(before, 'collab', fix)), countCharacters(before));
 });

@@ -108,7 +108,28 @@
         }, 0);
     }
 
-    const api = { getCleanNotes, parseCharacterList, formatCharacterString, countCharacters };
+    // 角色名稱修正 (角色圖鑑管理員的 shared/characters)：把 notes 裡的名稱換成修正後的名稱
+    //   rename(名稱) → 修正後的名稱 (不用改時回傳原名稱)
+    //   果實分配的同名編號與註記會保留：「砲姐-2(擊種)」→「御坂美琴-2(擊種)」
+    //   改完同名的會合併：「砲姐、御坂美琴」→「御坂美琴*2」
+    //   新名稱裡的空白會拿掉 (空白是角色的分隔符號)；沒有要改的名稱時原樣回傳
+    const NAME_SUFFIX_RE = /^(.*?)((?:-\d+)?(?:\s*[(（](?:同族|戰型|擊種|雙削)[)）])?)$/;
+    function renameCharacters(notes, tag, rename) {
+        if (typeof notes !== 'string' || !notes || tag === 'orb' || typeof rename !== 'function') return notes;
+        let changed = false;
+        const list = parseCharacterList(notes, tag).map((c) => {
+            const m = c.name.match(NAME_SUFFIX_RE);
+            const base = m ? m[1].trim() : c.name;
+            const to = base ? String(rename(base) || '').replace(/\s+/g, '') : '';
+            if (!to || to === base) return c;
+            changed = true;
+            return { name: to + (m ? m[2].trim() : ''), count: c.count };
+        });
+        if (!changed) return notes;
+        return formatCharacterString(list.map((c) => (c.count > 1 ? `${c.name}*${c.count}` : c.name)).join('、'), tag);
+    }
+
+    const api = { getCleanNotes, parseCharacterList, formatCharacterString, countCharacters, renameCharacters };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.GachaNotes = api;
 })(this);

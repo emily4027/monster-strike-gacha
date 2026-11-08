@@ -196,9 +196,27 @@ body.is-admin .admin-only {
 }
 
 /* 各活動：抽到角色數與每隻平均抽數 */
+/* 各活動：左邊日期一欄 (不換行)，右邊活動名稱與抽數 */
+.event-line {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.event-date {
+    flex: 0 0 auto;
+    min-width: 54px;
+    white-space: nowrap;
+    font-size: 0.85rem;
+    color: #6c757d;
+    font-variant-numeric: tabular-nums;
+}
+.event-body {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
 .event-ratio {
     display: block;
-    margin-left: 83px;
     font-size: 0.8rem;
     color: #6c757d;
 }
@@ -221,8 +239,11 @@ body.is-admin .admin-only {
     font-size: 0.9rem;
 }
 .trend-label {
-    flex: 0 0 82px;
+    flex: 0 0 auto;
+    min-width: 54px;
+    white-space: nowrap;
     color: #6c757d;
+    font-variant-numeric: tabular-nums;
 }
 .trend-track {
     flex: 1;

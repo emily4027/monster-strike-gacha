@@ -959,7 +959,7 @@ document.addEventListener('DOMContentLoaded', () => {
             html += '<div class="trend-list">' + months.map(([month, pulls]) => {
                 const [y, m] = month.split('-');
                 const width = max > 0 ? Math.max(pulls > 0 ? 2 : 0, Math.round(pulls / max * 100)) : 0;
-                return `<div class="trend-row"><span class="trend-label">${escapeHtml(y)}年${escapeHtml(parseInt(m, 10))}月</span>`
+                return `<div class="trend-row"><span class="trend-label">${escapeHtml(y)}/${escapeHtml(m)}</span>`
                     + `<span class="trend-track"><span class="trend-bar" style="width: ${width}%"></span></span>`
                     + `<span class="trend-value">${pulls.toLocaleString()}</span></div>`;
             }).join('') + '</div>';
@@ -1038,13 +1038,14 @@ document.addEventListener('DOMContentLoaded', () => {
             scrollableContent.innerHTML = '<p><i>尚無資料</i></p>';
         } else {
             scrollableContent.innerHTML = sortedEvents.map(([event, data]) => {
-                const year = data.firstDate.split('-')[0];
-                const month = parseInt(data.firstDate.split('-')[1], 10);
+                const [year, month] = data.firstDate.split('-');
                 const displayEventName = getCleanEventName(event, data.firstDate);
                 const ratio = data.ratio && data.pulls > 0
                     ? `<span class="event-ratio">${data.chars.toLocaleString()} 隻${data.chars > 0 ? ` · 每隻 ${formatPullsPerChar(data.pulls, data.chars)} 抽` : ''}</span>`
                     : '';
-                return `<p><span class="text-muted small me-2" style="display: inline-block; width: 75px;">${escapeHtml(year)}年 ${escapeHtml(month)}月</span> ${escapeHtml(displayEventName)}: <strong>${data.pulls.toLocaleString()}</strong> 抽${ratio}</p>`;
+                // 日期固定一欄、不換行 (2026/11)；活動名稱太長時在右邊那欄換行
+                return `<p class="event-line"><span class="event-date">${escapeHtml(year)}/${escapeHtml(month)}</span>`
+                    + `<span class="event-body">${escapeHtml(displayEventName)}: <strong>${data.pulls.toLocaleString()}</strong> 抽${ratio}</span></p>`;
             }).join('');
         }
         eventStatsDiv.appendChild(scrollableContent);

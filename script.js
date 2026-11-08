@@ -100,6 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const importEventsFileBtn = $('import-events-file-btn');
     const importEventsFileInput = $('import-events-file-input');
     const saveEventMasterBtn = $('save-event-master-btn');
+    const eventEndDateInput = $('event-end-date');
     const deleteEventMasterBtn = $('delete-event-master-btn');
     const adminBadge = $('admin-badge');
 
@@ -138,6 +139,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let knownCloudStamp = null;
     // 雲端活動清單是否已讀到 (或確認雲端還沒有清單)；讀到之前不開放管理員寫入
     let masterEventsReady = false;
+    // 上次讀到的雲端活動清單 updatedAt (毫秒)。存檔時不一樣 = 爬蟲或其他管理員剛改過，不覆蓋
+    let knownEventsStamp = null;
 
 
     // =====================================================
@@ -176,7 +179,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const isValidEvent = (e) => e && typeof e === 'object' && typeof e.event === 'string' && normalizeName(e.event);
 
-    // 整理單筆活動資料 (名稱、日期、標籤、舊名稱 aliases)
+    // 整理單筆活動資料 (名稱、日期、結束日、標籤、舊名稱 aliases)
+    // 結束日 endDate 是選填；沒有、格式不對或早於開始日時就不保留 (舊資料都沒有結束日)
     function normalizeMasterEvent(e) {
         const name = normalizeName(e.event);
         const aliases = Array.isArray(e.aliases)
@@ -190,6 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         if (aliases.length > 0) result.aliases = aliases;
         else delete result.aliases;
+        if (!(isValidDate(result.endDate) && result.date && result.endDate >= result.date)) delete result.endDate;
         return result;
     }
 
@@ -787,6 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadMasterEventsFromCloud() {
         if (!(await waitForFirebaseServices())) throw new Error('Firebase not ready');
         const snap = await window.getDoc(getSharedEventsRef());
+        knownEventsStamp = snap.exists() ? eventsStampOf(snap.data()) : null;
         if (!snap.exists()) return null;
         const list = snap.data().events;
         if (!Array.isArray(list) || list.length === 0) return null;
@@ -828,11 +834,32 @@ document.addEventListener('DOMContentLoaded', () => {
         return false;
     }
 
-    // 管理員：把目前的活動清單寫入雲端
+    const eventsStampOf = (data) => (data && data.updatedAt && typeof data.updatedAt.toMillis === 'function'
+        ? data.updatedAt.toMillis() : null);
+
+    // 管理員：把目前的活動清單寫入雲端。
+    // 雲端清單在上次讀取後被改過 (例如每天中午的爬蟲新增了活動) 就不寫入，避免把新增的活動蓋掉
     async function saveMasterEventsToCloud() {
         if (!isAdmin || !currentUser) throw new Error('需要管理員權限');
         const events = JSON.parse(JSON.stringify(masterEvents));
-        await window.setDoc(getSharedEventsRef(), { events, updatedAt: window.serverTimestamp() });
+        const ref = getSharedEventsRef();
+        await window.runTransaction(window.db, async (tx) => {
+            const snap = await tx.get(ref);
+            const cloudStamp = snap.exists() ? eventsStampOf(snap.data()) : null;
+            if (cloudStamp !== knownEventsStamp) {
+                const error = new Error('雲端活動清單在讀取後被修改過');
+                error.code = 'events-changed';
+                throw error;
+            }
+            tx.set(ref, { events, updatedAt: window.serverTimestamp() });
+        });
+    }
+
+    // 寫入活動清單失敗時的提示文字
+    function masterSaveErrorMessage(error, fallback) {
+        return error && error.code === 'events-changed'
+            ? '雲端活動清單剛被更新過（可能是爬蟲新增了活動），沒有儲存。已重新載入，請確認後再操作一次。'
+            : fallback;
     }
 
 
@@ -1375,6 +1402,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (dateToUse) dateInput.value = dateToUse;
+            eventEndDateInput.value = (m && m.endDate) || '';
             if (tagToUse) {
                 tagSelect.value = tagToUse;
                 checkFreeTagDefault();
@@ -1613,6 +1641,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const date = dateInput.value;
         if (!date) { showToast('請選擇日期！', 'error'); return; }
         const tag = tagSelect.value === 'none' ? '' : tagSelect.value;
+        const endDate = eventEndDateInput.value;
+        if (endDate && endDate < date) { showToast('活動結束日不能早於開始日期！', 'error'); return; }
 
         // 編輯模式下名稱有變動 = 更名；舊名稱會記在 aliases，讓所有人的紀錄自動對應到新名稱
         const oldName = (editMode && editEventName) ? normalizeName(editEventName) : null;
@@ -1637,10 +1667,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             entry.date = date;
             entry.tag = tag;
+            if (endDate) entry.endDate = endDate;
+            else delete entry.endDate;
             if (aliases.size > 0) entry.aliases = [...aliases];
             else delete entry.aliases;
         } else {
             entry = { event: name, date, tag };
+            if (endDate) entry.endDate = endDate;
             if (isRename) entry.aliases = [oldName];
             masterEvents.push(entry);
         }
@@ -1656,7 +1689,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('[ADMIN] 儲存活動失敗', error);
             await refreshMasterEventsFromCloud();
-            showToast('儲存失敗，請檢查管理員權限或網路。', 'error');
+            showToast(masterSaveErrorMessage(error, '儲存失敗，請檢查管理員權限或網路。'), 'error');
         }
     }
 
@@ -1681,7 +1714,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('[ADMIN] 刪除活動失敗', error);
             await refreshMasterEventsFromCloud();
-            showToast('刪除失敗，請檢查管理員權限或網路。', 'error');
+            showToast(masterSaveErrorMessage(error, '刪除失敗，請檢查管理員權限或網路。'), 'error');
         }
     }
 
@@ -1714,7 +1747,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (err) {
                     console.error('[ADMIN] 匯入活動清單失敗', err);
                     await refreshMasterEventsFromCloud();
-                    showToast(`匯入失敗：${err.message}`, 'error');
+                    showToast(masterSaveErrorMessage(err, `匯入失敗：${err.message}`), 'error');
                 } finally {
                     importEventsFileInput.value = null;
                 }

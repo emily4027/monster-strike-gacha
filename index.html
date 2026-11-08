@@ -82,6 +82,11 @@
                             <option value="orb">寶珠</option>
                         </select>
                     </div>
+                    <!-- 管理員：活動結束日 (選填，只存到活動清單，不影響紀錄) -->
+                    <div class="col-md-3 admin-only">
+                        <label for="event-end-date" class="form-label">活動結束日 <small class="text-muted">(選填)</small></label>
+                        <input type="date" class="form-control" id="event-end-date" title="活動清單用的結束日，行事曆會畫成期間；按「儲存活動到清單」才會存">
+                    </div>
                     <div class="col-md-3" id="account-field-container">
                         <label for="account-select" class="form-label">帳號</label>
                         <div class="input-group">

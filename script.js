@@ -1611,24 +1611,48 @@ document.addEventListener('DOMContentLoaded', () => {
             title.textContent = g.title;
             group.appendChild(title);
             g.chars.forEach((name) => {
+                // 一個角色一組：主按鈕加 1 隻；已選的角色後面多一個「−」減 1 隻
+                const wrap = document.createElement('span');
+                wrap.className = 'char-chip-wrap';
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'char-chip';
                 btn.dataset.name = name;
+                btn.dataset.step = '1';
                 btn.title = `加 1 隻「${name}」`;
                 btn.textContent = name;
+                wrap.appendChild(btn);
                 const count = counts.get(name);
                 if (count) {
-                    btn.classList.add('is-picked');
+                    wrap.classList.add('is-picked');
                     const badge = document.createElement('span');
                     badge.className = 'char-chip-count';
                     badge.textContent = `×${count}`;
                     btn.appendChild(badge);
+                    const minus = document.createElement('button');
+                    minus.type = 'button';
+                    minus.className = 'char-chip char-chip-minus';
+                    minus.dataset.name = name;
+                    minus.dataset.step = '-1';
+                    minus.title = `減 1 隻「${name}」`;
+                    minus.setAttribute('aria-label', `減 1 隻「${name}」`);
+                    minus.textContent = '−';
+                    wrap.appendChild(minus);
                 }
-                group.appendChild(btn);
+                group.appendChild(wrap);
             });
             return group;
         }));
+    }
+
+    // 「獲得角色」裡某隻角色加減 1 隻 (減到 0 就拿掉)，結果整理成存檔格式
+    function adjustCharacterCount(notes, name, delta, tag) {
+        const list = parseCharacterList(notes, tag);
+        const item = list.find((c) => c.name === name);
+        if (item) item.count += delta;
+        else if (delta > 0) list.push({ name, count: delta });
+        return formatCharacterString(list.filter((c) => c.count > 0)
+            .map((c) => (c.count > 1 ? `${c.name}*${c.count}` : c.name)).join('、'), tag);
     }
 
     function bindCharPicker() {
@@ -1637,8 +1661,7 @@ document.addEventListener('DOMContentLoaded', () => {
         picker.addEventListener('click', (e) => {
             const btn = e.target.closest('.char-chip');
             if (!btn || notesInput.disabled) return;
-            const current = notesInput.value.trim();
-            notesInput.value = formatCharacterString(current ? `${current}、${btn.dataset.name}` : btn.dataset.name, tagSelect.value);
+            notesInput.value = adjustCharacterCount(notesInput.value, btn.dataset.name, btn.dataset.step === '-1' ? -1 : 1, tagSelect.value);
             renderCharPicker();
         });
         notesInput.addEventListener('input', renderCharPicker);

@@ -525,10 +525,24 @@ tr[data-tag="orb"] { border-left: 5px solid #ffc107; }
     transition: background 0.15s, border-color 0.15s;
 }
 .char-chip:hover { border-color: var(--accent-blue); }
-.char-chip.is-picked {
+/* 一個角色一組：主按鈕 (加 1 隻) + 已選時的「−」(減 1 隻) */
+.char-chip-wrap { display: inline-flex; }
+.char-chip-wrap.is-picked .char-chip {
     background: var(--accent-blue);
     border-color: var(--accent-blue);
     color: #fff;
+}
+.char-chip-wrap.is-picked .char-chip:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+.char-chip-wrap.is-picked .char-chip:hover { filter: brightness(1.1); }
+.char-chip-minus {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left-color: rgba(255, 255, 255, 0.6) !important;
+    padding: 3px 12px;
+    font-weight: 700;
 }
 .char-chip-count {
     margin-left: 6px;

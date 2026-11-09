@@ -3,6 +3,14 @@
 本專案所有重大變更都會記錄於此文件。
 格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)。
 
+## [1.7.1] - 2026-11-09
+
+### 變更 (Changed)
+- 角色圖鑑和活動行事曆合併成附屬工具「🗂️ 轉蛋資料庫」：卡池資料改從 `/monster-strike-gacha-data/pools.js`、`pools.json` 讀取（舊網址暫時保留，但已停止更新）。
+
+### 新增 (Added)
+- 標題下面加上轉蛋資料庫（📅 行事曆・📖 角色）的連結。
+
 ## [1.6.2] - 2026-11-09
 
 ### 修正 (Fixed)

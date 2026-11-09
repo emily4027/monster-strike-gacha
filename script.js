@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const THIS_TOOL_ID = 'gacha';
 
     // 角色圖鑑的卡池 (活動 → 可以抽到的角色)，同網域；index.html 也從這裡載入 pools.js
-    const CHARACTER_POOLS_URL = '/monster-strike-character-catalog/pools.json';
+    const CHARACTER_POOLS_URL = '/monster-strike-gacha-data/pools.json';
 
     const CLOUD_SAVE_DELAY_MS = 1500;
     const TOAST_DURATION_MS = 3000;
